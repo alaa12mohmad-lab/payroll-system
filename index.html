@@ -15,21 +15,23 @@ const THEMES={midnight:{name:"الأزرق الداكن",bg:"#060615",sf:"#0c0c2
 const defCfg={companyName:"شركة الإدارة",daysPerMonth:30,overtimeMultiplier:1.5,currency:"ر.س",theme:"midnight",deliveryLocations:["المكتب الرئيسي"],defaultHoursPerDay:8,showAbsentColumn:true,enableBankTransfer:true,monthlyDays:{}};
 const defData={employees:[],projects:[],attendance:[],transactions:[],archives:[],payments:[],archivedEmployees:[],frozenAllowances:{},settings:{...defCfg}};
 function dbL(){try{const r=JSON.parse(localStorage.getItem(DB));if(r){["employees","projects","attendance","transactions","archives","payments","auditLog","templates","archivedEmployees"].forEach(k=>{if(!Array.isArray(r[k]))r[k]=[]});if(!r.settings)r.settings={...defCfg};if(!r.settings.deliveryLocations)r.settings.deliveryLocations=["المكتب الرئيسي"];if(!r.settings.monthlyDays)r.settings.monthlyDays={};if(!r.frozenAllowances)r.frozenAllowances={};(r.employees||[]).forEach(function(e){if(!e.allowances)e.allowances=[]});return r}}catch{}return JSON.parse(JSON.stringify(defData))}
+// ── IndexedDB: تخزين أساسي بلا حدود عملية (500MB+) ──
+const IDB_DB="payroll_idb_v1",IDB_ST="data";
+function idbOpen(){return new Promise(function(res,rej){var r=indexedDB.open(IDB_DB,1);r.onupgradeneeded=function(e){e.target.result.createObjectStore(IDB_ST)};r.onsuccess=function(e){res(e.target.result)};r.onerror=function(e){rej(e.target.error)}})}
+function idbGet(){return idbOpen().then(function(db){return new Promise(function(res,rej){var r=db.transaction(IDB_ST,"readonly").objectStore(IDB_ST).get(DB);r.onsuccess=function(e){res(e.target.result)};r.onerror=function(e){rej(e.target.error)}})})}
+function idbSet(d){return idbOpen().then(function(db){return new Promise(function(res,rej){var r=db.transaction(IDB_ST,"readwrite").objectStore(IDB_ST).put(d,DB);r.onsuccess=function(){res()};r.onerror=function(e){rej(e.target.error)}})})}
+
 function dbS(d){
+  // الأول: IndexedDB — لا حد فعلي للحجم (async، لا تنتظره)
+  try{idbSet(d).catch(function(e){console.warn("IDB write:",e)})}catch(e){}
+  // الثاني: localStorage — احتياطي سريع للبدء (قد يفشل عند كبر الحجم — طبيعي)
   try{
     localStorage.setItem(DB,JSON.stringify(d));
   }catch(e){
-    // إذا امتلأ localStorage — احذف النسخ الاحتياطية وحاول مجدداً
     try{
       Object.keys(localStorage).filter(k=>k.startsWith("payroll_bk_")).forEach(k=>localStorage.removeItem(k));
       localStorage.setItem(DB,JSON.stringify(d));
-    }catch(e2){
-      // آخر محاولة — احذف كل شيء ليس البيانات الأساسية
-      try{
-        Object.keys(localStorage).filter(k=>k!==DB&&k!==CFG_KEY_GPS).forEach(k=>localStorage.removeItem(k));
-        localStorage.setItem(DB,JSON.stringify(d));
-      }catch(e3){}
-    }
+    }catch(e2){}
   }
 }
 function gid(){return"id_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8)}
@@ -303,6 +305,18 @@ const mKey=fY+"-"+fM;
 const mDays=(cfg.monthlyDays||{})[mKey]||cfg.daysPerMonth||30;
 const setMDays=v=>up(d=>{if(!d.settings.monthlyDays)d.settings.monthlyDays={};d.settings.monthlyDays[mKey]=Number(v)||30});
 useEffect(()=>{dbS(data)},[data]);
+// تحميل من IndexedDB عند البدء — يعوّض محدودية localStorage عند كثرة الموظفين
+useEffect(()=>{
+  idbGet().then(function(idbData){
+    if(!idbData)return;
+    setData(function(prev){
+      var iTs=idbData._ts||0,pTs=prev._ts||0;
+      // استخدم IndexedDB فقط إذا كان أحدث (مثلاً localStorage كان ممتلئاً)
+      if(iTs>pTs)return idbData;
+      return prev;
+    });
+  }).catch(function(e){console.warn("IDB load:",e)});
+},[]);
 // ضمان الحفظ عند إغلاق المتصفح
 useEffect(()=>{
   const save=()=>dbS(data);
