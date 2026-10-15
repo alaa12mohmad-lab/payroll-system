@@ -1228,7 +1228,7 @@ function tdL(val,style){return '<td style="padding:8px 5px;font-size:11px;'+(sty
 var rows=sigList.map(function(p,i){
 var iS=p.emp.type==="salary";
 var rem=p.remaining;
-var grossBeforeDed=rn(p.basePay+p.otPay+p.bonus);
+var grossBeforeDed=rn(p.basePay+(p.allowancesTotal||0)+p.otPay+p.bonus);
 var dayHours=iS?(p.present+"يوم"+(p.absent>0?" / غ:"+p.absent:"")):p.totalHours+"س";
 var friCell=iS&&p.fridayDays>0?(p.fridayDays+"يوم / "+rn(p.fridayHours,1)+"س"):"—";
 var otHrs=iS&&p.totalOT>0?(rn(p.totalOT,1)+"س"):"—";
@@ -1272,7 +1272,7 @@ td(p.bankPaid>0?('<b style="color:#1d4ed8">🏦 '+n(p.bankPaid)+'</b>'):'—')+
 var footer='<tr style="background:#1a3a6a;color:#fff;font-weight:700">'+
 '<td style="padding:10px 5px;font-size:12px">الإجمالي ('+sigList.length+')</td>'+
 td('')+td('')+td('')+
-td(n(totalBase))+td(n(totalOT))+td(n(totalBonus))+
+td(n(totalBase))+td(n(sigList.reduce(function(s,p){return s+(p.allowancesTotal||0)},0)))+td(n(totalOT))+td(n(totalBonus))+
 '<td style="padding:10px 5px;text-align:center">'+n(totalBase+totalOT+totalBonus)+'</td>'+
 td(n(totalDed))+td(n(totalAdv))+
 '<td style="padding:10px 5px;text-align:center;font-size:13px">'+n(totalNet)+'</td>'+
@@ -1288,6 +1288,7 @@ th("حضور/غياب","7%")+
 th("🕌 جمعة","6%")+
 th("إضافي","5%")+
 th("أساسي","7%")+
+th("بدلات","5%")+
 th("أجر إضافي","6%")+
 th("بونص","5%")+
 th("الإجمالي","7%")+
@@ -1366,9 +1367,10 @@ if(iS){
 attInfo+='</div>';
 
 // ── جدول الحساب ──
-var gross=rn(p.basePay+p.otPay+p.bonus);
+var gross=rn(p.basePay+(p.allowancesTotal||0)+p.otPay+p.bonus);
 var rows='';
 rows+='<tr><td>الأساسي</td><td class="num">'+n(p.basePay)+'</td></tr>';
+if(iS&&p.allowancesTotal>0)rows+='<tr style="background:#d1fae5"><td>💰 بدلات</td><td class="num">+ '+n(p.allowancesTotal||0)+'</td></tr>';
 if(iS&&p.otPay>0)rows+='<tr class="ot-row"><td>أجر الإضافي</td><td class="num">+ '+n(p.otPay)+'</td></tr>';
 if(p.bonus>0)rows+='<tr class="bon-row"><td>بونص</td><td class="num">+ '+n(p.bonus)+'</td></tr>';
 if(p.otPay>0||p.bonus>0)rows+='<tr class="gross-row"><td>الإجمالي</td><td class="num">'+n(gross)+'</td></tr>';
@@ -1745,7 +1747,7 @@ return'<tr><td>'+fd(r.date)+'</td><td>'+(proj?.name||"—")+'</td>'+(iS?'<td sty
 const n2=v=>rn(v,2).toLocaleString();
 const n0=v=>rn(v,0).toLocaleString();
 const ic=(l,v,c)=>'<div class="ic"><div class="l">'+l+'</div><div class="v"'+(c?' style="color:'+c+'"':'')+'>'+v+'</div></div>';
-const grossBeforeDed=rn(p.basePay+(p.otPay||0)+p.bonus);
+const grossBeforeDed=rn(p.basePay+(p.allowancesTotal||0)+(p.otPay||0)+p.bonus);
 
 // ── كارت الراتب — تنسيق بسيط وواضح ──
 const cards=
@@ -1759,6 +1761,7 @@ ic(lbl('النوع','Type'),iS?lbl('💼 راتب','💼 Salary'):lbl('⏰ سا�
 (iS&&p.fridayDays>0?ic(lbl('🕌 جمعة','🕌 Fridays'),p.fridayDays+' ('+rn(p.fridayHours,1)+' '+lbl('س','hrs')+')','#f59e0b'):'')+
 (iS?ic(lbl('إضافي (س)','OT (hrs)'),rn(p.totalOT,1),'#0891b2'):'')+
 ic(lbl('الأساسي','Base'),n0(p.basePay))+
+(p.allowancesTotal>0?ic(lbl('💰 بدلات','💰 Allowances'),'+ '+n0(p.allowancesTotal||0),'#059669'):'')+
 (p.otPay>0?ic(lbl('🟦 أجر الإضافي','🟦 OT Pay'),'+ '+n0(p.otPay),'#0891b2'):'')+
 (p.bonus>0?ic(lbl('بونص','Bonus'),'+ '+n0(p.bonus),'#10b981'):'')+
 (p.deduction>0?ic(lbl('خصم','Deduction'),'− '+n0(p.deduction),'#ef4444'):'')+
