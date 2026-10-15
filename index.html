@@ -413,12 +413,14 @@ const effOTRate=snap?.overtimeRate??emp.overtimeRate;
 const dr=effSalary/(mDays||30);
 const hr=dr/(effHPD||8);
 const otHr=effOTRate&&effOTRate>0?effOTRate:rn(hr*(cfg.overtimeMultiplier||1.5));
-// ── حساب أيام الإجازة ──
-const leaveBal=empRaw.leaveBalance||0;
+// ── حساب أيام الإجازة — paid/unpaid محفوظة في السجل وقت التسجيل ──
 const leaveDays=leaveRecs.length;
-const paidLeaveDays=Math.min(leaveDays,leaveBal);   // مدفوعة من الرصيد
-const unpaidLeaveDays=Math.max(0,leaveDays-leaveBal); // خصم كغياب
-const leaveBalAfter=Math.max(0,leaveBal-paidLeaveDays);
+// السجلات الجديدة تحمل r.paid=true/false — القديمة (بدون r.paid) تُحسب من الرصيد للتوافق
+const hasPayFlag=leaveRecs.some(r=>r.paid!==undefined);
+const leaveBal=empRaw.leaveBalance||0;
+const paidLeaveDays=hasPayFlag?leaveRecs.filter(r=>r.paid!==false).length:Math.min(leaveDays,leaveBal);
+const unpaidLeaveDays=leaveDays-paidLeaveDays;
+const leaveBalAfter=hasPayFlag?leaveBal:Math.max(0,leaveBal-paidLeaveDays);
 const bp=rn((prs+paidLeaveDays)*dr);
 const unpaidDed=rn(unpaidLeaveDays*dr); // خصم أيام الإجازة بدون رصيد
 const op=rn(ot*otHr);
@@ -428,7 +430,7 @@ const frozenAmt=(data.frozenAllowances||{})[frozenKey];
 const hasPaidAttendance=(prs+paidLeaveDays)>0;
 const allowAmt=frozenAmt!==undefined?frozenAmt:(hasPaidAttendance?getActiveAllowances(empRaw,fY,fM).reduce(function(s,a){return s+(a.amount||0)},0):0);
 const g=rn(bp+op+bon),n=rn(g-ded-adv-unpaidDed+allowAmt),rem=rn(n-tP);
-const pD={};nonFriRecs.forEach(r=>{pD[r.projectId]=(pD[r.projectId]||0)+1});friRecs.forEach(r=>{pD[r.projectId]=(pD[r.projectId]||0)+1});leaveRecs.forEach(r=>{pD[r.projectId]=(pD[r.projectId]||0)+1});
+const pD={};nonFriRecs.forEach(r=>{if(r.projectId)pD[r.projectId]=(pD[r.projectId]||0)+1});friRecs.forEach(r=>{if(r.projectId)pD[r.projectId]=(pD[r.projectId]||0)+1});leaveRecs.forEach(r=>{if(r.projectId)pD[r.projectId]=(pD[r.projectId]||0)+1});
 const pC={};const totalPresent=prs+friRecs.length+leaveDays||1;Object.entries(pD).forEach(([p,d])=>{pC[p]=rn((d/totalPresent)*n)});
 return{emp,present:prs,absent:abs,leaveDays,paidLeaveDays,unpaidLeaveDays,unpaidLeaveDed:unpaidDed,leaveBalAfter,totalOT:ot,normOT,fridayDays:friRecs.length,fridayHours:friHrs,basePay:bp,otPay:op,otHourlyRate:otHr,bonus:bon,deduction:ded,advance:adv,allowancesTotal:allowAmt,allowances:getActiveAllowances(empRaw,fY,fM),gross:g,net:n,cashPaid:cP,bankPaid:bP,totalPaid:tP,remaining:rem,deliveryLocation:dLoc,recs,pCosts:pC,pDays:pD,totalHours:0,pHours:{}}}
 else{const th=recs.reduce((s,r)=>s+(r.hours||0),0),bp=rn(th*(emp.hourlyRate||0)),g=rn(bp+bon),n=rn(g-ded-adv),rem=rn(n-tP);const pH={};recs.forEach(r=>{pH[r.projectId]=(pH[r.projectId]||0)+(r.hours||0)});const pC={};Object.entries(pH).forEach(([p,h])=>{pC[p]=rn((h/(th||1))*n)});return{emp,present:recs.length,absent:0,totalOT:0,fridayDays:0,basePay:bp,otPay:0,bonus:bon,deduction:ded,advance:adv,gross:g,net:n,cashPaid:cP,bankPaid:bP,totalPaid:tP,remaining:rem,deliveryLocation:dLoc,recs,pCosts:pC,pDays:{},totalHours:th,pHours:pH}}
@@ -978,7 +980,7 @@ return <div key={bk.key} style={{display:"flex",justifyContent:"space-between",a
 
 };
 const Emp=()=>{const[sh,setSh]=useState(false);const[fm,setFm]=useState({name:"",type:"salary",baseSalary:"",hourlyRate:"",hoursPerDay:"8",overtimeRate:"",startDate:""});const[ei,setEi]=useState(null);const eRef=useRef();const[srch,setSrch]=useState("");const[histEmp,setHistEmp]=useState(null);
-const[rateModal,setRateModal]=useState(null);const[rateFrom,setRateFrom]=useState("current");const[rateCM,setRateCM]=useState(fM);const[rateCY,setRateCY]=useState(fY);const[rateReason,setRateReason]=useState("");const[allowEmp,setAllowEmp]=useState(null);const[allowFm,setAllowFm]=useState({name:"",amount:"",type:"permanent",month:String(fY)+"-"+String(fM).padStart(2,"0"),from:String(fY)+"-"+String(fM).padStart(2,"0"),months:"3"});const[leaveEmp,setLeaveEmp]=useState(null);const[leaveAdd,setLeaveAdd]=useState("");
+const[rateModal,setRateModal]=useState(null);const[rateFrom,setRateFrom]=useState("current");const[rateCM,setRateCM]=useState(fM);const[rateCY,setRateCY]=useState(fY);const[rateReason,setRateReason]=useState("");const[allowEmp,setAllowEmp]=useState(null);const[allowFm,setAllowFm]=useState({name:"",amount:"",type:"permanent",month:String(fY)+"-"+String(fM).padStart(2,"0"),from:String(fY)+"-"+String(fM).padStart(2,"0"),months:"3"});const[leaveEmp,setLeaveEmp]=useState(null);const[leaveAdd,setLeaveAdd]=useState("");const[leaveTab,setLeaveTab]=useState("register");const[leaveFr,setLeaveFr]=useState("");const[leaveTo,setLeaveTo]=useState("");const[leavePreview,setLeavePreview]=useState(null);
 const cls=()=>{setFm({name:"",type:"salary",baseSalary:"",hourlyRate:"",hoursPerDay:"8",overtimeRate:""});setEi(null);setSh(false);setRateModal(null)};
 
 // حفظ الموظف مع سجل السعر التاريخي
@@ -1104,22 +1106,134 @@ return <div>
 </div>
 </div></div>}
 
-{leaveEmp&&<div style={MO} onMouseDown={e=>{if(e.target===e.currentTarget)setLeaveEmp(null)}}>
-<div style={{...MX,maxWidth:480}} onMouseDown={e=>e.stopPropagation()}>
-<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-<h3 style={{fontSize:20,fontWeight:800}}>🏖️ رصيد إجازات — {leaveEmp.name}</h3>
-<button onClick={()=>setLeaveEmp(null)} style={{background:"transparent",border:"none",fontSize:20,cursor:"pointer",color:T.tm}}>✕</button>
+{leaveEmp&&(()=>{
+// ── حساب المعاينة ──
+function calcLeavePreview(fr,to,bal){
+  if(!fr||!to||to<fr)return null;
+  const days=[];let cur=new Date(fr);const end=new Date(to);
+  while(cur<=end){days.push(cur.toISOString().slice(0,10));cur.setDate(cur.getDate()+1)}
+  const total=days.length;
+  const existDates=new Set(data.attendance.filter(a=>a.employeeId===leaveEmp.id).map(a=>a.date));
+  const skip=days.filter(d=>existDates.has(d));
+  const newDays=days.filter(d=>!existDates.has(d));
+  const paid=Math.min(newDays.length,bal);
+  const unpaid=Math.max(0,newDays.length-bal);
+  const balAfter=Math.max(0,bal-paid);
+  return{days,total,newDays,skip,paid,unpaid,balAfter};
+}
+const lRecs=data.attendance.filter(a=>a.employeeId===leaveEmp.id&&a.status==="leave").sort((a,b)=>a.date.localeCompare(b.date));
+// تجميع الأيام المتتالية في فترات
+function groupPeriods(recs){
+  if(!recs.length)return[];
+  const periods=[];let start=recs[0].date,prev=recs[0].date;
+  for(let i=1;i<recs.length;i++){
+    const cur=recs[i].date;
+    const prevD=new Date(prev),curD=new Date(cur);
+    curD.setDate(curD.getDate()-1);
+    if(prevD.toISOString().slice(0,10)===curD.toISOString().slice(0,10)){prev=cur}
+    else{periods.push({from:start,to:prev,days:recs.filter(r=>r.date>=start&&r.date<=prev).length});start=cur;prev=cur}
+  }
+  periods.push({from:start,to:prev,days:recs.filter(r=>r.date>=start&&r.date<=prev).length});
+  return periods;
+}
+const periods=groupPeriods(lRecs);
+const totalUsed=lRecs.length;
+const bal=leaveEmp.leaveBalance||0;
+const preview=leaveFr&&leaveTo?calcLeavePreview(leaveFr,leaveTo,bal):null;
+return <div style={MO} onMouseDown={e=>{if(e.target===e.currentTarget){setLeaveEmp(null);setLeaveFr("");setLeaveTo("");setLeavePreview(null)}}}>
+<div style={{...MX,maxWidth:520,maxHeight:"90vh",overflowY:"auto"}} onMouseDown={e=>e.stopPropagation()}>
+{/* رأس النافذة */}
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+<h3 style={{fontSize:19,fontWeight:800}}>🏖️ إجازات — {leaveEmp.name}</h3>
+<button onClick={()=>{setLeaveEmp(null);setLeaveFr("");setLeaveTo("");}} style={{background:"transparent",border:"none",fontSize:20,cursor:"pointer",color:T.tm}}>✕</button>
 </div>
-{/* الرصيد الحالي */}
-<div style={{background:T.pr+"12",border:"2px solid "+T.pr+"40",borderRadius:14,padding:20,marginBottom:20,textAlign:"center"}}>
-<div style={{fontSize:13,color:T.tm,marginBottom:6}}>الرصيد الحالي</div>
-<div style={{fontSize:48,fontWeight:800,color:(leaveEmp.leaveBalance||0)>0?T.gn:T.rd,lineHeight:1}}>{leaveEmp.leaveBalance||0}</div>
-<div style={{fontSize:14,color:T.tm,marginTop:4}}>يوم</div>
+{/* بطاقة الرصيد دائمة الظهور */}
+<div style={{display:"flex",gap:10,marginBottom:16}}>
+<div style={{flex:1,background:bal>0?T.gn+"18":T.rd+"18",border:"2px solid "+(bal>0?T.gn:T.rd)+"50",borderRadius:12,padding:"12px 16px",textAlign:"center"}}>
+<div style={{fontSize:11,color:T.tm,marginBottom:2}}>الرصيد المتاح</div>
+<div style={{fontSize:36,fontWeight:800,color:bal>0?T.gn:T.rd,lineHeight:1}}>{bal}</div>
+<div style={{fontSize:12,color:T.tm}}>يوم</div>
 </div>
-{/* إضافة/خصم يدوي */}
-<div style={{marginBottom:20}}>
-<label style={L}>إضافة أيام إجازة (يدوي)</label>
-<div style={{display:"flex",gap:10}}>
+<div style={{flex:1,background:T.bk+"18",border:"2px solid "+T.bk+"40",borderRadius:12,padding:"12px 16px",textAlign:"center"}}>
+<div style={{fontSize:11,color:T.tm,marginBottom:2}}>إجمالي مستخدم</div>
+<div style={{fontSize:36,fontWeight:800,color:T.bk,lineHeight:1}}>{totalUsed}</div>
+<div style={{fontSize:12,color:T.tm}}>يوم</div>
+</div>
+</div>
+{/* التبويبات */}
+<div style={{display:"flex",gap:0,marginBottom:18,border:"1px solid "+T.bd,borderRadius:10,overflow:"hidden"}}>
+{[["register","📅 تسجيل إجازة"],["balance","💰 إدارة الرصيد"],["history","📋 كشف الإجازات"]].map(([k,lbl])=><button key={k} style={{flex:1,padding:"9px 4px",background:leaveTab===k?T.pr:T.sf,color:leaveTab===k?"#fff":T.tm,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:leaveTab===k?700:400,transition:"all .15s"}} onClick={()=>setLeaveTab(k)}>{lbl}</button>)}
+</div>
+
+{/* ── تبويب: تسجيل إجازة ── */}
+{leaveTab==="register"&&<div>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+<div>
+<label style={L}>من تاريخ</label>
+<input type="date" style={I} value={leaveFr} onChange={e=>{setLeaveFr(e.target.value)}}/>
+</div>
+<div>
+<label style={L}>إلى تاريخ</label>
+<input type="date" style={I} value={leaveTo} onChange={e=>{setLeaveTo(e.target.value)}} min={leaveFr||undefined}/>
+</div>
+</div>
+{/* معاينة */}
+{preview&&<div style={{background:T.cd,borderRadius:12,padding:16,marginBottom:14,fontSize:13}}>
+<div style={{fontWeight:700,color:T.pl,marginBottom:10}}>📊 معاينة الإجازة</div>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+<div style={{background:T.sf,borderRadius:8,padding:"8px 12px"}}>
+<div style={{fontSize:11,color:T.tm}}>إجمالي الأيام</div>
+<div style={{fontSize:20,fontWeight:800,color:T.tx}}>{preview.total}</div>
+</div>
+<div style={{background:T.sf,borderRadius:8,padding:"8px 12px"}}>
+<div style={{fontSize:11,color:T.tm}}>أيام جديدة</div>
+<div style={{fontSize:20,fontWeight:800,color:T.bk}}>{preview.newDays.length}</div>
+</div>
+<div style={{background:T.gn+"18",borderRadius:8,padding:"8px 12px"}}>
+<div style={{fontSize:11,color:T.tm}}>مدفوعة من الرصيد</div>
+<div style={{fontSize:20,fontWeight:800,color:T.gn}}>{preview.paid}</div>
+</div>
+<div style={{background:preview.unpaid>0?T.rd+"18":T.sf,borderRadius:8,padding:"8px 12px"}}>
+<div style={{fontSize:11,color:T.tm}}>غياب بدون دفع</div>
+<div style={{fontSize:20,fontWeight:800,color:preview.unpaid>0?T.rd:T.tm}}>{preview.unpaid}</div>
+</div>
+</div>
+<div style={{display:"flex",justifyContent:"space-between",padding:"8px 12px",background:T.pr+"15",borderRadius:8,marginBottom:preview.skip.length>0?8:0}}>
+<span style={{color:T.tm}}>الرصيد بعد الإجازة</span>
+<span style={{fontWeight:800,color:preview.balAfter>0?T.gn:T.rd}}>{preview.balAfter} يوم</span>
+</div>
+{preview.skip.length>0&&<div style={{padding:"7px 12px",background:T.og+"18",borderRadius:8,color:T.og,fontSize:12}}>
+⚠️ {preview.skip.length} يوم موجود مسبقاً سيُتخطى: {preview.skip.slice(0,3).map(fd).join("، ")}{preview.skip.length>3?"...":""}
+</div>}
+{preview.newDays.length===0&&<div style={{padding:"7px 12px",background:T.rd+"18",borderRadius:8,color:T.rd,fontSize:12,marginTop:8}}>❌ جميع الأيام في هذه الفترة مسجّلة مسبقاً</div>}
+</div>}
+{leaveFr&&leaveTo&&leaveTo<leaveFr&&<div style={{padding:10,background:T.rd+"15",borderRadius:8,color:T.rd,fontSize:13,marginBottom:14}}>❌ تاريخ الانتهاء قبل تاريخ البداية</div>}
+<button style={{...B(T.bk,false,"lg"),width:"100%",marginTop:4,opacity:(!preview||preview.newDays.length===0)?0.4:1}} onClick={()=>{
+if(!preview||preview.newDays.length===0){nt("لا توجد أيام جديدة للتسجيل","err");return}
+const newBal=preview.balAfter;
+const rateSnap={baseSalary:leaveEmp.baseSalary,hourlyRate:leaveEmp.hourlyRate,overtimeRate:leaveEmp.overtimeRate,hoursPerDay:leaveEmp.hoursPerDay};
+up(d=>{
+  const emp=d.employees.find(x=>x.id===leaveEmp.id);
+  if(!emp)return;
+  // أول preview.paid يوم مدفوعة، الباقي غياب بدون دفع
+  preview.newDays.forEach((date,idx)=>{
+    const isPaid=idx<preview.paid;
+    d.attendance.push({id:gid(),employeeId:leaveEmp.id,date,projectId:null,status:"leave",paid:isPaid,overtime:0,hours:emp.hoursPerDay||8,baseHours:emp.hoursPerDay||8,friHours:0,_snap:rateSnap})
+  });
+  emp.leaveBalance=newBal;
+  setLeaveEmp({...emp});
+});
+addLog("تسجيل إجازة",leaveEmp.name+": "+fd(leaveFr)+" → "+fd(leaveTo)+" ("+preview.newDays.length+" يوم — مدفوع: "+preview.paid+" / غياب: "+preview.unpaid+") — الرصيد: "+newBal);
+const msg=preview.skip.length>0?`✅ سُجّل ${preview.newDays.length} يوم — تخطّي ${preview.skip.length} موجود مسبقاً`:`✅ سُجّل ${preview.newDays.length} يوم إجازة`;
+nt(msg);
+setLeaveFr("");setLeaveTo("");
+}}>🏖️ تسجيل الإجازة{preview?` (${preview.newDays.length} يوم)`:""}</button>
+</div>}
+
+{/* ── تبويب: إدارة الرصيد ── */}
+{leaveTab==="balance"&&<div>
+<label style={L}>تعديل الرصيد الافتتاحي (يدوي)</label>
+<div style={{display:"flex",gap:10,marginBottom:10}}>
 <input type="number" style={{...I,flex:1}} value={leaveAdd} onChange={e=>setLeaveAdd(e.target.value)} placeholder="عدد الأيام (سالب للخصم)" min="-365" max="365"/>
 <button style={B(T.pr,false,"lg")} onClick={()=>{
 const n=Number(leaveAdd);
@@ -1131,23 +1245,36 @@ nt((n>0?"أضيف ":"خُصم ")+Math.abs(n)+" يوم — الرصيد: "+newBal
 setLeaveAdd("");
 }}>💾 حفظ</button>
 </div>
-<p style={{fontSize:11,color:T.tm,marginTop:6}}>💡 أدخل رقماً موجباً للإضافة أو سالباً للخصم — الرصيد لا يقل عن صفر</p>
+<p style={{fontSize:11,color:T.tm}}>💡 موجب للإضافة، سالب للخصم — لا يقل عن صفر</p>
+</div>}
+
+{/* ── تبويب: كشف الإجازات ── */}
+{leaveTab==="history"&&<div>
+{!periods.length?<p style={{fontSize:13,color:T.tm,textAlign:"center",padding:20}}>لا توجد إجازات مسجّلة بعد</p>:
+<div>
+<div style={{fontSize:12,color:T.tm,marginBottom:10}}>إجمالي: <strong style={{color:T.pl}}>{totalUsed} يوم</strong> في {periods.length} فترة</div>
+<div style={{maxHeight:300,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
+{periods.slice().reverse().map((p,i)=>{
+const pRecs=lRecs.filter(r=>r.date>=p.from&&r.date<=p.to);
+const empBal=leaveEmp.leaveBalance||0;
+return <div key={i} style={{background:T.sf,borderRadius:10,padding:"10px 14px",border:"1px solid "+T.bd}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+<div>
+<span style={{fontWeight:700,color:T.tx,fontSize:13}}>📅 {fd(p.from)}</span>
+{p.from!==p.to&&<span style={{color:T.tm,fontSize:12}}> → {fd(p.to)}</span>}
 </div>
-{/* سجل الإجازات المستخدمة هذا الشهر */}
-{(()=>{
-const lRecs=data.attendance.filter(a=>a.employeeId===leaveEmp.id&&a.status==="leave");
-const curMonthLRecs=lRecs.filter(a=>{const[y,m]=a.date.split("-");return +y===fY&&+m===fM});
-const totalUsed=lRecs.length;
-if(!lRecs.length)return <p style={{fontSize:13,color:T.tm,textAlign:"center",padding:16}}>لا توجد إجازات مسجّلة بعد</p>;
-return <div>
-<div style={{fontSize:13,color:T.tm,marginBottom:8}}>📅 إجازات مسجّلة — {mL(fY,fM)}: <strong style={{color:T.pl}}>{curMonthLRecs.length} يوم</strong> | إجمالي كل الأشهر: <strong style={{color:T.pl}}>{totalUsed} يوم</strong></div>
-{curMonthLRecs.length>0&&<div style={{maxHeight:160,overflowY:"auto"}}>{curMonthLRecs.sort((a,b)=>a.date.localeCompare(b.date)).map(r=><div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 12px",background:T.sf,borderRadius:8,marginBottom:6,fontSize:13}}><span>📅 {fd(r.date)}</span><span style={{color:T.bk,fontSize:11}}>🏖️ يوم إجازة</span></div>)}</div>}
-</div>;
+<span style={{background:T.bk+"25",color:T.bk,borderRadius:20,padding:"2px 10px",fontSize:12,fontWeight:700}}>{p.days} يوم</span>
+</div>
+</div>})}
+</div>
+</div>}
+</div>}
+
+<div style={{display:"flex",gap:12,marginTop:18}}>
+<button style={B(T.tm,true)} onClick={()=>{setLeaveEmp(null);setLeaveFr("");setLeaveTo("");}}>إغلاق</button>
+</div>
+</div></div>;
 })()}
-<div style={{display:"flex",gap:12,marginTop:20}}>
-<button style={B(T.tm,true)} onClick={()=>setLeaveEmp(null)}>إغلاق</button>
-</div>
-</div></div>}
 
 {histEmp&&<div style={MO} onMouseDown={e=>{if(e.target===e.currentTarget)setHistEmp(null)}}>
 <div style={{...MX,maxWidth:600,maxHeight:"88vh",overflowY:"auto"}} onMouseDown={e=>e.stopPropagation()}>
