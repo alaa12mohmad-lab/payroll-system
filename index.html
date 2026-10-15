@@ -908,13 +908,13 @@ return <div key={bk.key} style={{display:"flex",justifyContent:"space-between",a
 </div>
 
 };
-const Emp=()=>{const[sh,setSh]=useState(false);const[fm,setFm]=useState({name:"",type:"salary",baseSalary:"",hourlyRate:"",hoursPerDay:"8",overtimeRate:""});const[ei,setEi]=useState(null);const eRef=useRef();const[srch,setSrch]=useState("");
-const[rateModal,setRateModal]=useState(null);const[rateFrom,setRateFrom]=useState("current");const[rateCM,setRateCM]=useState(fM);const[rateCY,setRateCY]=useState(fY);
+const Emp=()=>{const[sh,setSh]=useState(false);const[fm,setFm]=useState({name:"",type:"salary",baseSalary:"",hourlyRate:"",hoursPerDay:"8",overtimeRate:"",startDate:""});const[ei,setEi]=useState(null);const eRef=useRef();const[srch,setSrch]=useState("");const[histEmp,setHistEmp]=useState(null);
+const[rateModal,setRateModal]=useState(null);const[rateFrom,setRateFrom]=useState("current");const[rateCM,setRateCM]=useState(fM);const[rateCY,setRateCY]=useState(fY);const[rateReason,setRateReason]=useState("");
 const cls=()=>{setFm({name:"",type:"salary",baseSalary:"",hourlyRate:"",hoursPerDay:"8",overtimeRate:""});setEi(null);setSh(false);setRateModal(null)};
 
 // حفظ الموظف مع سجل السعر التاريخي
 const commitEmp=(snap)=>{
-up(d=>{const eD={id:ei||gid(),name:fm.name.trim(),type:fm.type,baseSalary:fm.type==="salary"?Number(fm.baseSalary)||0:0,hourlyRate:fm.type==="hourly"?Number(fm.hourlyRate)||0:0,hoursPerDay:fm.type==="salary"?Number(fm.hoursPerDay)||8:0,overtimeRate:fm.type==="salary"&&fm.overtimeRate?Number(fm.overtimeRate)||0:0};
+up(d=>{const eD={id:ei||gid(),name:fm.name.trim(),type:fm.type,baseSalary:fm.type==="salary"?Number(fm.baseSalary)||0:0,hourlyRate:fm.type==="hourly"?Number(fm.hourlyRate)||0:0,hoursPerDay:fm.type==="salary"?Number(fm.hoursPerDay)||8:0,overtimeRate:fm.type==="salary"&&fm.overtimeRate?Number(fm.overtimeRate)||0:0,startDate:fm.startDate||""};
 if(ei){const i=d.employees.findIndex(x=>x.id===ei);if(i>=0){const old=d.employees[i];eD.rateHistory=[...(old.rateHistory||[])];
 if(snap){// احفظ السعر القديم كنقطة أساسية أولى إن لم يكن موجوداً
 if(!eD.rateHistory.some(function(h){return h.from<snap.from})){eD.rateHistory.push({from:"2000-01",baseSalary:old.baseSalary||0,hourlyRate:old.hourlyRate||0,overtimeRate:old.overtimeRate||0,hoursPerDay:old.hoursPerDay||8})}
@@ -933,7 +933,7 @@ if(old&&(old.baseSalary!==ns||old.hourlyRate!==nh||old.overtimeRate!==no||old.ho
 
 const confirmRate=()=>{if(!rateModal)return;const{ns,nh,no,np}=rateModal;
 if(rateFrom==="all"){commitEmp(null)}
-else{const from=rateFrom==="current"?String(fY)+"-"+String(fM).padStart(2,"0"):String(rateCY)+"-"+String(rateCM).padStart(2,"0");commitEmp({from,baseSalary:ns,hourlyRate:nh,overtimeRate:no,hoursPerDay:np})}};
+else{const from=rateFrom==="current"?String(fY)+"-"+String(fM).padStart(2,"0"):String(rateCY)+"-"+String(rateCM).padStart(2,"0");commitEmp({from,baseSalary:ns,hourlyRate:nh,overtimeRate:no,hoursPerDay:np,reason:rateReason.trim()||""})}};
 
 const dlTpl=()=>{
 const wb=XLSX.utils.book_new();
@@ -953,7 +953,7 @@ const EmpT=({emps,type})=>{const fe=fltEmps(emps);return <div style={C({borderRi
 {fe.length===0?<p style={{color:T.tm,textAlign:"center",padding:20}}>{srch?"لا نتائج":"لا يوجد"}</p>:<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:0}}>
 <thead><tr><th style={TH}>#</th><th style={TH}>الاسم</th><th style={TH}>{type==="salary"?"الراتب":"سعر الساعة"}</th>{type==="salary"&&<th style={TH}>ساعات/يوم</th>}{type==="salary"&&<th style={TH}>سعر الإضافي</th>}<th style={TH}>إجراءات</th></tr></thead>
 <tbody>{fe.map((e,i)=><tr key={e.id}><td style={TD}>{i+1}</td><td style={{...TD,fontWeight:700}}>{srch.trim()?<span dangerouslySetInnerHTML={{__html:e.name.replace(new RegExp(srch.trim(),"g"),"<mark style='background:"+T.og+"40;color:"+T.og+";border-radius:3px;padding:0 2px'>$&</mark>")}}/>:e.name}</td><td style={{...TD,fontWeight:600}}>{type==="salary"?e.baseSalary?.toLocaleString():e.hourlyRate} {cfg.currency}</td>{type==="salary"&&<td style={TD}>{e.hoursPerDay||8}</td>}{type==="salary"&&<td style={TD}>{e.overtimeRate&&e.overtimeRate>0?<span style={{color:T.og,fontWeight:700}}>✏️ {e.overtimeRate} {cfg.currency}/س</span>:<span style={{color:T.tm,fontSize:11}}>⚙️ تلقائي</span>}</td>}
-<td style={TD}><div style={{display:"flex",gap:8}}><button style={B(T.pr,false,"sm")} onClick={()=>{setFm({name:e.name,type:e.type,baseSalary:String(e.baseSalary||""),hourlyRate:String(e.hourlyRate||""),hoursPerDay:String(e.hoursPerDay||8),overtimeRate:String(e.overtimeRate||"")});setEi(e.id);setSh(true)}}>✏️</button><button style={B(T.rd,false,"sm")} onClick={()=>{if(window.confirm("حذف "+e.name+"؟")){up(d=>{d.employees=d.employees.filter(x=>x.id!==e.id);d.attendance=d.attendance.filter(a=>a.employeeId!==e.id);d.transactions=d.transactions.filter(x=>x.employeeId!==e.id);d.payments=d.payments.filter(p=>p.employeeId!==e.id)});nt("تم")}}}>🗑️</button></div></td></tr>)}</tbody></table></div>}</div>};
+<td style={TD}><div style={{display:"flex",gap:8}}><button style={B(T.bk,false,"sm")} onClick={()=>setHistEmp(e)} title="السجل التاريخي">📋</button><button style={B(T.pr,false,"sm")} onClick={()=>{setFm({name:e.name,type:e.type,baseSalary:String(e.baseSalary||""),hourlyRate:String(e.hourlyRate||""),hoursPerDay:String(e.hoursPerDay||8),overtimeRate:String(e.overtimeRate||""),startDate:e.startDate||""});setEi(e.id);setSh(true)}}>✏️</button><button style={B(T.rd,false,"sm")} onClick={()=>{if(window.confirm("حذف "+e.name+"؟")){up(d=>{d.employees=d.employees.filter(x=>x.id!==e.id);d.attendance=d.attendance.filter(a=>a.employeeId!==e.id);d.transactions=d.transactions.filter(x=>x.employeeId!==e.id);d.payments=d.payments.filter(p=>p.employeeId!==e.id)});nt("تم")}}}>🗑️</button></div></td></tr>)}</tbody></table></div>}</div>};
 return <div>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:10}}>
 <div><h1 style={{fontSize:26,fontWeight:800,marginBottom:6}}>الموظفون</h1></div>
@@ -968,7 +968,7 @@ return <div>
 <EmpT emps={data.employees.filter(e=>e.type==="hourly")} type="hourly"/>
 {sh&&<div style={MO} onMouseDown={e=>{if(e.target===e.currentTarget)cls()}}><div style={MX} onMouseDown={e=>e.stopPropagation()}>
 <h3 style={{fontSize:20,fontWeight:800,marginBottom:22}}>{ei?"✏️":"➕"} موظف</h3>
-<div style={{marginBottom:18}}><label style={L}>الاسم *</label><input style={I} value={fm.name} onChange={e=>setFm({...fm,name:e.target.value})}/></div>
+<div style={{marginBottom:18}}><label style={L}>الاسم *</label><input style={I} value={fm.name} onChange={e=>setFm({...fm,name:e.target.value})}/></div><div style={{marginBottom:18}}><label style={L}>📅 تاريخ الانضمام</label><input type="date" style={I} value={fm.startDate} onChange={e=>setFm({...fm,startDate:e.target.value})}/></div>
 <div style={{marginBottom:18}}><div style={{display:"flex",gap:12}}><button style={{...B(T.pr,fm.type!=="salary"),flex:1,padding:"14px"}} onClick={()=>setFm({...fm,type:"salary"})}>💼 راتب</button><button style={{...B(T.og,fm.type!=="hourly"),flex:1,padding:"14px"}} onClick={()=>setFm({...fm,type:"hourly"})}>⏰ ساعة</button></div></div>
 {fm.type==="salary"?<div style={{background:T.pr+"08",borderRadius:12,padding:18,marginBottom:18}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div><label style={L}>الراتب</label><input type="number" style={I} value={fm.baseSalary} onChange={e=>setFm({...fm,baseSalary:e.target.value})}/></div><div><label style={L}>ساعات/يوم</label><input type="number" style={I} value={fm.hoursPerDay} onChange={e=>setFm({...fm,hoursPerDay:e.target.value})}/></div></div><div style={{marginTop:14,paddingTop:14,borderTop:"1px solid "+T.bd+"40"}}><label style={{...L,color:T.og}}>⚡ سعر الساعة الإضافية (يدوي)</label><input type="number" step="0.01" style={{...I,borderColor:T.og+"60"}} value={fm.overtimeRate} onChange={e=>setFm({...fm,overtimeRate:e.target.value})} placeholder="اتركه فارغاً لاستخدام المعادلة التلقائية"/><p style={{fontSize:11,color:T.tm,marginTop:5}}>💡 إذا تُرك فارغاً سيُحسب تلقائياً: (الراتب ÷ أيام الشهر ÷ ساعات/يوم) × المضاعف — وإذا أُدخل يُطبّق مباشرةً على كل ساعة إضافية بما فيها الجمعة</p></div></div>
 :<div style={{background:T.og+"08",borderRadius:12,padding:18,marginBottom:18}}><label style={L}>سعر الساعة</label><input type="number" style={I} value={fm.hourlyRate} onChange={e=>setFm({...fm,hourlyRate:e.target.value})}/></div>}
@@ -989,11 +989,108 @@ return <div>
 <select style={{...I,flex:1}} value={rateCM} onChange={e=>setRateCM(+e.target.value)}>{["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"].map((m,i)=><option key={i} value={i+1}>{m}</option>)}</select>
 <select style={{...I,width:90}} value={rateCY} onChange={e=>setRateCY(+e.target.value)}>{[2024,2025,2026,2027,2028].map(y=><option key={y} value={y}>{y}</option>)}</select>
 </div>}
-{rateFrom==="all"&&<div style={{fontSize:12,color:T.rd,background:T.rd+"10",padding:"8px 12px",borderRadius:8,marginBottom:12}}>⚠️ سيغيّر حسابات الرواتب في الأشهر الماضية — تأكد أن هذا ما تريده</div>}
+{rateFrom==="all"&&<div style={{fontSize:12,color:T.rd,background:T.rd+"10",padding:"8px 12px",borderRadius:8,marginBottom:12}}>⚠️ سيغيّر حسابات الرواتب في الأشهر الماضية — تأكد أن هذا ما تريده</div>}<div style={{marginBottom:12}}><label style={L}>📝 سبب التغيير (اختياري)</label><input style={I} value={rateReason} onChange={e=>setRateReason(e.target.value)} placeholder="مثال: زيادة سنوية / ترقية / تعديل عقد..."/></div>
 <div style={{display:"flex",gap:10,marginTop:8}}>
 <button style={{...B(rateFrom==="all"?T.rd:T.gn,false,"lg"),flex:1,justifyContent:"center"}} onClick={confirmRate}>✅ تأكيد الحفظ</button>
 <button style={B(T.tm,true)} onClick={()=>setRateModal(null)}>إلغاء</button>
 </div>
+</div></div>}
+
+{histEmp&&<div style={MO} onMouseDown={e=>{if(e.target===e.currentTarget)setHistEmp(null)}}>
+<div style={{...MX,maxWidth:600,maxHeight:"88vh",overflowY:"auto"}} onMouseDown={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+<div>
+<h3 style={{fontSize:20,fontWeight:800,marginBottom:4}}>📋 السجل التاريخي</h3>
+<p style={{fontSize:13,color:T.pr,fontWeight:700}}>{histEmp.name}</p>
+</div>
+<button onClick={()=>setHistEmp(null)} style={{background:"transparent",border:"none",fontSize:20,cursor:"pointer",color:T.tm}}>✕</button>
+</div>
+
+{/* Info cards */}
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
+<div style={{background:T.sf,borderRadius:10,padding:12,textAlign:"center"}}>
+<div style={{fontSize:11,color:T.tm,marginBottom:4}}>تاريخ الانضمام</div>
+<div style={{fontSize:15,fontWeight:700,color:T.ac}}>{histEmp.startDate?fd(histEmp.startDate):"—"}</div>
+</div>
+<div style={{background:T.sf,borderRadius:10,padding:12,textAlign:"center"}}>
+<div style={{fontSize:11,color:T.tm,marginBottom:4}}>نوع العقد</div>
+<div style={{fontSize:15,fontWeight:700}}>{histEmp.type==="salary"?"💼 راتب شهري":"⏰ بالساعة"}</div>
+</div>
+<div style={{background:T.sf,borderRadius:10,padding:12,textAlign:"center"}}>
+<div style={{fontSize:11,color:T.tm,marginBottom:4}}>{histEmp.type==="salary"?"الراتب الحالي":"سعر الساعة الحالي"}</div>
+<div style={{fontSize:15,fontWeight:700,color:T.gn}}>{histEmp.type==="salary"?histEmp.baseSalary?.toLocaleString():histEmp.hourlyRate?.toLocaleString()} {cfg.currency}</div>
+</div>
+</div>
+
+{/* مدة الخدمة */}
+{histEmp.startDate&&(()=>{
+const start=new Date(histEmp.startDate);const now=new Date();
+let y=now.getFullYear()-start.getFullYear();let m=now.getMonth()-start.getMonth();
+if(m<0){y--;m+=12}
+return <div style={{background:T.pr+"15",borderRadius:10,padding:"10px 16px",marginBottom:20,textAlign:"center"}}>
+<span style={{fontSize:13,color:T.pl}}>⏳ مدة الخدمة: <strong style={{color:T.pr}}>{y>0?y+" سنة ":""}{m>0?m+" شهر":""}{y===0&&m===0?"أقل من شهر":""}</strong></span>
+</div>;
+})()}
+
+{/* Timeline */}
+<h4 style={{fontSize:14,fontWeight:700,marginBottom:14,color:T.tm}}>📈 تاريخ الرواتب والتغييرات</h4>
+{(()=>{
+const hist=[...(histEmp.rateHistory||[])].sort((a,b)=>b.from.localeCompare(a.from));
+// أضف الوضع الحالي كأول عنصر
+const timeline=[{from:"الآن",isCurrent:true,baseSalary:histEmp.baseSalary,hourlyRate:histEmp.hourlyRate,overtimeRate:histEmp.overtimeRate,hoursPerDay:histEmp.hoursPerDay},...hist];
+if(timeline.length<=1&&!histEmp.startDate)return <p style={{color:T.tm,fontSize:13,textAlign:"center",padding:20}}>لا يوجد سجل تغييرات حتى الآن</p>;
+return <div style={{position:"relative"}}>
+{timeline.map((h,i)=>{
+const[hy,hm]=h.from==="الآن"?["",""]:(h.from||"").split("-");
+const monthName=hm?["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"][Number(hm)-1]:"";
+const isFirst=i===timeline.length-1;
+return <div key={i} style={{display:"flex",gap:14,marginBottom:16}}>
+{/* Line + dot */}
+<div style={{display:"flex",flexDirection:"column",alignItems:"center",minWidth:16}}>
+<div style={{width:14,height:14,borderRadius:"50%",background:h.isCurrent?T.gn:isFirst?T.bk:T.pr,border:"2px solid "+(h.isCurrent?T.gn:isFirst?T.bk:T.pr),flexShrink:0,marginTop:2}}/>
+{i<timeline.length-1&&<div style={{width:2,flex:1,background:T.bd,marginTop:2,marginBottom:-4}}/>}
+</div>
+{/* Content */}
+<div style={{flex:1,background:T.sf,borderRadius:10,padding:"10px 14px",marginBottom:4}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+<span style={{fontSize:12,fontWeight:700,color:h.isCurrent?T.gn:T.tm}}>
+{h.isCurrent?"🟢 الوضع الحالي":isFirst?"🚀 البداية":monthName+" "+hy}
+</span>
+{h.from!=="الآن"&&h.from!=="2000-01"&&<span style={{fontSize:11,color:T.tm}}>من {monthName} {hy}</span>}
+</div>
+<div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+{histEmp.type==="salary"?<>
+<span style={{fontSize:14,fontWeight:700,color:T.tx}}>💰 {(h.baseSalary||0).toLocaleString()} {cfg.currency}</span>
+{(h.hoursPerDay||8)>0&&<span style={{fontSize:12,color:T.tm}}>⏱ {h.hoursPerDay||8} س/يوم</span>}
+{h.overtimeRate>0&&<span style={{fontSize:12,color:T.og}}>⚡ {h.overtimeRate} {cfg.currency}/س</span>}
+</>:<span style={{fontSize:14,fontWeight:700,color:T.tx}}>⏰ {(h.hourlyRate||0).toLocaleString()} {cfg.currency}/س</span>}
+</div>
+{h.reason&&<div style={{marginTop:6,fontSize:11,color:T.ac,background:T.ac+"10",padding:"3px 8px",borderRadius:6,display:"inline-block"}}>📝 {h.reason}</div>}
+</div>
+</div>
+})}
+</div>;
+})()}
+
+{/* Attendance summary */}
+{(()=>{
+const attRecs=data.attendance.filter(a=>a.employeeId===histEmp.id);
+const months={};
+attRecs.forEach(a=>{const k=a.date.slice(0,7);if(!months[k])months[k]={present:0,absent:0,friday:0,ot:0};
+if(a.status==="present")months[k].present++;else if(a.status==="absent")months[k].absent++;else if(a.status==="friday"||a.status==="fri_absent")months[k].friday++;
+months[k].ot+=a.overtime||0;});
+const mArr=Object.entries(months).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6);
+if(!mArr.length)return null;
+return <div style={{marginTop:20}}>
+<h4 style={{fontSize:14,fontWeight:700,marginBottom:12,color:T.tm}}>📊 ملخص الدوام (آخر 6 أشهر)</h4>
+<table style={{width:"100%",borderCollapse:"separate",borderSpacing:0}}>
+<thead><tr>{["الشهر","حضور","غياب","جمعة","إضافي"].map(h=><th key={h} style={{...TH,fontSize:11}}>{h}</th>)}</tr></thead>
+<tbody>{mArr.map(([k,v])=>{const[y,m]=k.split("-");const mn=["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"][Number(m)-1];
+return <tr key={k}><td style={{...TD,fontWeight:700}}>{mn} {y}</td><td style={{...TD,color:T.gn}}>{v.present}</td><td style={{...TD,color:v.absent>0?T.rd:T.tm}}>{v.absent}</td><td style={{...TD,color:T.bk}}>{v.friday}</td><td style={{...TD,color:T.og}}>{rn(v.ot,1)}</td></tr>})}
+</tbody></table>
+</div>;
+})()}
+
 </div></div>}
 
 </div>};
