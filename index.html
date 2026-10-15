@@ -14,7 +14,7 @@ const DB="payroll_v11";
 const THEMES={midnight:{name:"الأزرق الداكن",bg:"#060615",sf:"#0c0c28",cd:"#141440",bd:"#252565",pr:"#5b7cfa",pl:"#7d9aff",ac:"#00e5a0",rd:"#ff5068",og:"#ffb340",tx:"#e4e4f0",tm:"#8888b0",gn:"#2ee87a",bk:"#4fc3f7"},ocean:{name:"المحيط",bg:"#04111d",sf:"#0a1f35",cd:"#0f2a45",bd:"#1a3d5c",pr:"#1e90ff",pl:"#60b0ff",ac:"#00cec9",rd:"#e74c3c",og:"#f39c12",tx:"#ecf0f1",tm:"#7f8c9a",gn:"#2ecc71",bk:"#74b9ff"},emerald:{name:"الزمردي",bg:"#0a120a",sf:"#111e11",cd:"#182a18",bd:"#254025",pr:"#27ae60",pl:"#55d98a",ac:"#f1c40f",rd:"#e74c3c",og:"#e67e22",tx:"#e8f5e9",tm:"#81a981",gn:"#2ecc71",bk:"#00b894"},royal:{name:"الملكي",bg:"#120a1e",sf:"#1a1030",cd:"#251845",bd:"#3a2868",pr:"#9b59b6",pl:"#bb80d3",ac:"#f39c12",rd:"#e74c3c",og:"#e67e22",tx:"#f0e6ff",tm:"#9988bb",gn:"#2ecc71",bk:"#a29bfe"},light:{name:"فاتح",bg:"#f0f2f5",sf:"#ffffff",cd:"#ffffff",bd:"#e0e4ea",pr:"#2563eb",pl:"#3b82f6",ac:"#059669",rd:"#dc2626",og:"#d97706",tx:"#1f2937",tm:"#6b7280",gn:"#16a34a",bk:"#0284c7"},sunset:{name:"الغروب",bg:"#1a0a08",sf:"#2a1210",cd:"#3a1a15",bd:"#5a2a20",pr:"#e85d3a",pl:"#ff8c69",ac:"#ffd93d",rd:"#ff4040",og:"#ff9f43",tx:"#fff5ee",tm:"#c09080",gn:"#6bcb77",bk:"#ffc58b"},carbon:{name:"الكربوني",bg:"#0d0d0d",sf:"#1a1a1a",cd:"#222222",bd:"#3a3a3a",pr:"#10b981",pl:"#34d399",ac:"#f59e0b",rd:"#ef4444",og:"#f97316",tx:"#e5e5e5",tm:"#888888",gn:"#22c55e",bk:"#38bdf8"},cherry:{name:"الكرزي",bg:"#150810",sf:"#1e0e18",cd:"#2d1525",bd:"#4a2040",pr:"#ec4899",pl:"#f472b6",ac:"#8b5cf6",rd:"#f43f5e",og:"#fb923c",tx:"#fce7f3",tm:"#a0708a",gn:"#4ade80",bk:"#c084fc"},sand:{name:"رملي",bg:"#faf6f0",sf:"#fff8ef",cd:"#fff8ef",bd:"#e8dcc8",pr:"#92714a",pl:"#b0906a",ac:"#5a9a4a",rd:"#c44536",og:"#d4884a",tx:"#3d2b1f",tm:"#8a7a6a",gn:"#6a9a5a",bk:"#6a8caf"},navy:{name:"بحري",bg:"#0a1628",sf:"#0f1f3a",cd:"#152a4a",bd:"#1e3a60",pr:"#3a86c8",pl:"#5aa0e0",ac:"#e8a838",rd:"#e05555",og:"#e89030",tx:"#d0dae8",tm:"#6a80a0",gn:"#48b070",bk:"#58b8e8"}};
 const defCfg={companyName:"شركة الإدارة",daysPerMonth:30,overtimeMultiplier:1.5,currency:"ر.س",theme:"midnight",deliveryLocations:["المكتب الرئيسي"],defaultHoursPerDay:8,showAbsentColumn:true,enableBankTransfer:true,monthlyDays:{}};
 const defData={employees:[],projects:[],attendance:[],transactions:[],archives:[],payments:[],archivedEmployees:[],frozenAllowances:{},settings:{...defCfg}};
-function dbL(){try{const r=JSON.parse(localStorage.getItem(DB));if(r){["employees","projects","attendance","transactions","archives","payments","auditLog","templates","archivedEmployees"].forEach(k=>{if(!Array.isArray(r[k]))r[k]=[]});if(!r.settings)r.settings={...defCfg};if(!r.settings.deliveryLocations)r.settings.deliveryLocations=["المكتب الرئيسي"];if(!r.settings.monthlyDays)r.settings.monthlyDays={};if(!r.frozenAllowances)r.frozenAllowances={};(r.employees||[]).forEach(function(e){if(!e.allowances)e.allowances=[]});return r}}catch{}return JSON.parse(JSON.stringify(defData))}
+function dbL(){try{const r=JSON.parse(localStorage.getItem(DB));if(r){["employees","projects","attendance","transactions","archives","payments","auditLog","templates","archivedEmployees"].forEach(k=>{if(!Array.isArray(r[k]))r[k]=[]});if(!r.settings)r.settings={...defCfg};if(!r.settings.deliveryLocations)r.settings.deliveryLocations=["المكتب الرئيسي"];if(!r.settings.monthlyDays)r.settings.monthlyDays={};if(!r.frozenAllowances)r.frozenAllowances={};(r.employees||[]).forEach(function(e){if(!e.allowances)e.allowances=[];if(e.leaveBalance===undefined)e.leaveBalance=0});return r}}catch{}return JSON.parse(JSON.stringify(defData))}
 // ── IndexedDB: تخزين أساسي بلا حدود عملية (500MB+) ──
 const IDB_DB="payroll_idb_v1",IDB_ST="data";
 function idbOpen(){return new Promise(function(res,rej){var r=indexedDB.open(IDB_DB,1);r.onupgradeneeded=function(e){e.target.result.createObjectStore(IDB_ST)};r.onsuccess=function(e){res(e.target.result)};r.onerror=function(e){rej(e.target.error)}})}
@@ -398,6 +398,7 @@ const dLoc=pr?.deliveryLocation||"";
 if(emp.type==="salary"){
 const nonFriRecs=recs.filter(r=>r.status==="present");
 const friRecs=recs.filter(r=>r.status==="friday");
+const leaveRecs=recs.filter(r=>r.status==="leave");
 const prs=nonFriRecs.length;
 const abs=recs.filter(r=>r.status==="absent").length;
 const friHrs=friRecs.reduce((s,r)=>s+(typeof r.friHours==="number"?r.friHours:Number(r.friHours)||0),0);
@@ -412,16 +413,24 @@ const effOTRate=snap?.overtimeRate??emp.overtimeRate;
 const dr=effSalary/(mDays||30);
 const hr=dr/(effHPD||8);
 const otHr=effOTRate&&effOTRate>0?effOTRate:rn(hr*(cfg.overtimeMultiplier||1.5));
-const bp=rn(prs*dr);
+// ── حساب أيام الإجازة ──
+const leaveBal=empRaw.leaveBalance||0;
+const leaveDays=leaveRecs.length;
+const paidLeaveDays=Math.min(leaveDays,leaveBal);   // مدفوعة من الرصيد
+const unpaidLeaveDays=Math.max(0,leaveDays-leaveBal); // خصم كغياب
+const leaveBalAfter=Math.max(0,leaveBal-paidLeaveDays);
+const bp=rn((prs+paidLeaveDays)*dr);
+const unpaidDed=rn(unpaidLeaveDays*dr); // خصم أيام الإجازة بدون رصيد
 const op=rn(ot*otHr);
 // البدلات التاريخية: استخدم القيمة المجمّدة وقت الأرشفة إن وُجدت
 const frozenKey=eid+"-"+fY+"-"+String(fM).padStart(2,"0");
 const frozenAmt=(data.frozenAllowances||{})[frozenKey];
-const allowAmt=frozenAmt!==undefined?frozenAmt:(prs>0?getActiveAllowances(empRaw,fY,fM).reduce(function(s,a){return s+(a.amount||0)},0):0);
-const g=rn(bp+op+bon),n=rn(g-ded-adv+allowAmt),rem=rn(n-tP);
-const pD={};nonFriRecs.forEach(r=>{pD[r.projectId]=(pD[r.projectId]||0)+1});friRecs.forEach(r=>{pD[r.projectId]=(pD[r.projectId]||0)+1});
-const pC={};const totalPresent=prs+(friRecs.length)||1;Object.entries(pD).forEach(([p,d])=>{pC[p]=rn((d/totalPresent)*n)});
-return{emp,present:prs,absent:abs,totalOT:ot,normOT,fridayDays:friRecs.length,fridayHours:friHrs,basePay:bp,otPay:op,otHourlyRate:otHr,bonus:bon,deduction:ded,advance:adv,allowancesTotal:allowAmt,allowances:getActiveAllowances(empRaw,fY,fM),gross:g,net:n,cashPaid:cP,bankPaid:bP,totalPaid:tP,remaining:rem,deliveryLocation:dLoc,recs,pCosts:pC,pDays:pD,totalHours:0,pHours:{}}}
+const hasPaidAttendance=(prs+paidLeaveDays)>0;
+const allowAmt=frozenAmt!==undefined?frozenAmt:(hasPaidAttendance?getActiveAllowances(empRaw,fY,fM).reduce(function(s,a){return s+(a.amount||0)},0):0);
+const g=rn(bp+op+bon),n=rn(g-ded-adv-unpaidDed+allowAmt),rem=rn(n-tP);
+const pD={};nonFriRecs.forEach(r=>{pD[r.projectId]=(pD[r.projectId]||0)+1});friRecs.forEach(r=>{pD[r.projectId]=(pD[r.projectId]||0)+1});leaveRecs.forEach(r=>{pD[r.projectId]=(pD[r.projectId]||0)+1});
+const pC={};const totalPresent=prs+friRecs.length+leaveDays||1;Object.entries(pD).forEach(([p,d])=>{pC[p]=rn((d/totalPresent)*n)});
+return{emp,present:prs,absent:abs,leaveDays,paidLeaveDays,unpaidLeaveDays,unpaidLeaveDed:unpaidDed,leaveBalAfter,totalOT:ot,normOT,fridayDays:friRecs.length,fridayHours:friHrs,basePay:bp,otPay:op,otHourlyRate:otHr,bonus:bon,deduction:ded,advance:adv,allowancesTotal:allowAmt,allowances:getActiveAllowances(empRaw,fY,fM),gross:g,net:n,cashPaid:cP,bankPaid:bP,totalPaid:tP,remaining:rem,deliveryLocation:dLoc,recs,pCosts:pC,pDays:pD,totalHours:0,pHours:{}}}
 else{const th=recs.reduce((s,r)=>s+(r.hours||0),0),bp=rn(th*(emp.hourlyRate||0)),g=rn(bp+bon),n=rn(g-ded-adv),rem=rn(n-tP);const pH={};recs.forEach(r=>{pH[r.projectId]=(pH[r.projectId]||0)+(r.hours||0)});const pC={};Object.entries(pH).forEach(([p,h])=>{pC[p]=rn((h/(th||1))*n)});return{emp,present:recs.length,absent:0,totalOT:0,fridayDays:0,basePay:bp,otPay:0,bonus:bon,deduction:ded,advance:adv,gross:g,net:n,cashPaid:cP,bankPaid:bP,totalPaid:tP,remaining:rem,deliveryLocation:dLoc,recs,pCosts:pC,pDays:{},totalHours:th,pHours:pH}}
 },[data.employees,mA,mT,mP,cfg,mDays]);
 
@@ -542,7 +551,7 @@ const doFinalSave=()=>{
   const rateSnap=emp.type==="salary"
     ?{baseSalary:emp.baseSalary,overtimeRate:emp.overtimeRate,hoursPerDay:emp.hoursPerDay}
     :{hourlyRate:emp.hourlyRate};
-  up(d=>{let r;if(emp.type==="salary"){if(isFri){const fh=fm.status==="absent"?-1:(fm.friHours===""?emp.hoursPerDay||8:Number(fm.friHours));r={id:ei||gid(),employeeId:fm.employeeId,date:fm.date,projectId:fm.projectId,status:fm.status==="absent"?"fri_absent":"friday",overtime:0,hours:0,baseHours:0,friHours:fh<0?0:fh,_snap:rateSnap}}else{r={id:ei||gid(),employeeId:fm.employeeId,date:fm.date,projectId:fm.projectId,status:fm.status,overtime:fm.status==="present"?Number(fm.overtime)||0:0,hours:emp.hoursPerDay||8,baseHours:emp.hoursPerDay||8,friHours:0,_snap:rateSnap}}}else{r={id:ei||gid(),employeeId:fm.employeeId,date:fm.date,projectId:fm.projectId,status:"present",overtime:0,hours:Number(fm.hours)||0,baseHours:0,friHours:0,_snap:rateSnap}}if(ei){const i=d.attendance.findIndex(a=>a.id===ei);if(i>=0)d.attendance[i]=r}else d.attendance.push(r)});
+  up(d=>{let r;if(emp.type==="salary"){if(isFri){const fh=fm.status==="absent"?-1:(fm.friHours===""?emp.hoursPerDay||8:Number(fm.friHours));r={id:ei||gid(),employeeId:fm.employeeId,date:fm.date,projectId:fm.projectId,status:fm.status==="absent"?"fri_absent":"friday",overtime:0,hours:0,baseHours:0,friHours:fh<0?0:fh,_snap:rateSnap}}else if(fm.status==="leave"){r={id:ei||gid(),employeeId:fm.employeeId,date:fm.date,projectId:fm.projectId,status:"leave",overtime:0,hours:emp.hoursPerDay||8,baseHours:emp.hoursPerDay||8,friHours:0,_snap:rateSnap}}else{r={id:ei||gid(),employeeId:fm.employeeId,date:fm.date,projectId:fm.projectId,status:fm.status,overtime:fm.status==="present"?Number(fm.overtime)||0:0,hours:emp.hoursPerDay||8,baseHours:emp.hoursPerDay||8,friHours:0,_snap:rateSnap}}}else{r={id:ei||gid(),employeeId:fm.employeeId,date:fm.date,projectId:fm.projectId,status:"present",overtime:0,hours:Number(fm.hours)||0,baseHours:0,friHours:0,_snap:rateSnap}}if(ei){const i=d.attendance.findIndex(a=>a.id===ei);if(i>=0)d.attendance[i]=r}else d.attendance.push(r)});
   addLog(ei?"تعديل دوام":"إضافة دوام",emp.name+" — "+fd(fm.date));
   nt(ei?"تم التحديث":"تم التسجيل");setConfData(null);clsKeepFilter();
 };
@@ -666,9 +675,9 @@ flt.map(r=>{const emp=data.employees.find(e=>e.id===r.employeeId);const proj=dat
 const rowWarn=getRowWarn(r,emp);const rowBg=rowWarn==="err"?T.rd+"08":rowWarn==="warn"?T.og+"06":"transparent";
 return <tr key={r.id} style={{background:rowBg}}><td style={TD}><input type="checkbox" checked={sel.includes(r.id)} onChange={e=>{if(e.target.checked)setSel([...sel,r.id]);else setSel(sel.filter(x=>x!==r.id))}}/></td>
 <td style={{...TD,fontWeight:600}}>{rowWarn&&<span style={{fontSize:10,marginLeft:6,color:rowWarn==="err"?T.rd:T.og}}>{rowWarn==="err"?"🚫":"⚠️"}</span>}{emp?.name||"—"}</td><td style={TD}>{iS?<span style={sB}>💼</span>:<span style={hB}>⏰</span>}</td><td style={TD}>{fd(r.date)}</td><td style={TD}>{proj?.name||"—"}</td>
-<td style={TD}>{r.status==="friday"?<span style={BG(T.og)}>🕌 جمعة</span>:r.status==="fri_absent"?<span style={BG(T.rd)}>🕌 غائب</span>:r.status==="present"?<span style={BG(T.gn)}>حاضر</span>:<span style={BG(T.rd)}>غائب</span>}</td>
-<td style={TD}>{r.status==="friday"?<span style={{color:T.og,fontWeight:700}}>{r.friHours} س إضافي</span>:r.status==="fri_absent"?<span style={{color:T.rd}}>—</span>:iS?(r.status==="present"?(r.baseHours||emp?.hoursPerDay||8):0):(r.hours||0)}</td>
-<td style={TD}>{r.status==="friday"||r.status==="fri_absent"?"—":iS&&r.status==="present"?(r.overtime||0):"—"}</td>
+<td style={TD}>{r.status==="friday"?<span style={BG(T.og)}>🕌 جمعة</span>:r.status==="fri_absent"?<span style={BG(T.rd)}>🕌 غائب</span>:r.status==="present"?<span style={BG(T.gn)}>حاضر</span>:r.status==="leave"?<span style={BG(T.bk)}>🏖️ إجازة</span>:<span style={BG(T.rd)}>غائب</span>}</td>
+<td style={TD}>{r.status==="friday"?<span style={{color:T.og,fontWeight:700}}>{r.friHours} س إضافي</span>:r.status==="fri_absent"?<span style={{color:T.rd}}>—</span>:r.status==="leave"?<span style={{color:T.bk}}>يوم إجازة</span>:iS?(r.status==="present"?(r.baseHours||emp?.hoursPerDay||8):0):(r.hours||0)}</td>
+<td style={TD}>{r.status==="friday"||r.status==="fri_absent"?"—":r.status==="leave"?"—":iS&&r.status==="present"?(r.overtime||0):"—"}</td>
 <td style={TD}><div style={{display:"flex",gap:8}}><button style={B(T.pr,false,"sm")} onClick={()=>{setFm({employeeId:r.employeeId,date:r.date,projectId:r.projectId,status:r.status||"present",overtime:String(r.overtime||0),hours:String(r.hours||0),friHours:String(r.friHours||"")});setEi(r.id);setSh(true)}}>✏️</button><button style={B(T.rd,false,"sm")} onClick={()=>{if(window.confirm("حذف؟")){up(d=>{d.attendance=d.attendance.filter(a=>a.id!==r.id)});addLog("حذف دوام",(emp||{}).name);nt("تم")}}}>🗑️</button></div></td></tr>})}</tbody>
 </table></div></div>
 {sh&&<div style={MO} onMouseDown={e=>{if(e.target===e.currentTarget)cls()}}><div style={MX} onMouseDown={e=>e.stopPropagation()}>
@@ -693,9 +702,10 @@ return <tr key={r.id} style={{background:rowBg}}><td style={TD}><input type="che
 </div>}
 {fm.status==="absent"&&<div style={{background:T.rd+"12",borderRadius:10,padding:14,fontSize:13,color:T.rd,textAlign:"center"}}>⚠️ لن تُحسب أي ساعات لهذا اليوم</div>}
 </div>):(<div>
-<div style={{marginBottom:14}}><div style={{display:"flex",gap:12}}><button style={{...B(T.gn,fm.status!=="present"),flex:1}} onClick={()=>setFm({...fm,status:"present",overtime:"0"})}>✅ حاضر</button><button style={{...B(T.rd,fm.status!=="absent"),flex:1}} onClick={()=>setFm({...fm,status:"absent",overtime:"0"})}>❌ غائب</button></div></div>
+<div style={{marginBottom:14}}><div style={{display:"flex",gap:8}}><button style={{...B(T.gn,fm.status!=="present"),flex:1}} onClick={()=>setFm({...fm,status:"present",overtime:"0"})}>✅ حاضر</button><button style={{...B(T.rd,fm.status!=="absent"),flex:1}} onClick={()=>setFm({...fm,status:"absent",overtime:"0"})}>❌ غائب</button><button style={{...B(T.bk,fm.status!=="leave"),flex:1}} onClick={()=>setFm({...fm,status:"leave",overtime:"0"})}>🏖️ إجازة</button></div></div>
 {fm.status==="present"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div><label style={L}>الساعات</label><input type="number" style={{...I,opacity:0.6}} value={selE.hoursPerDay||8} readOnly/></div><div><label style={{...L,color:T.og}}>⚡ إضافي</label><input type="number" min="0" step="0.5" style={I} value={fm.overtime} onChange={e=>setFm({...fm,overtime:e.target.value})}/></div></div>}
 {fm.status==="absent"&&<div style={{background:T.rd+"12",borderRadius:10,padding:14,fontSize:13,color:T.rd,textAlign:"center"}}>⚠️ لن يحتسب راتب</div>}
+{fm.status==="leave"&&(()=>{const lb=selE.leaveBalance||0;return<div style={{background:T.bk+"12",border:"1px solid "+T.bk+"50",borderRadius:10,padding:14,fontSize:13,textAlign:"center"}}><span style={{color:T.bk,fontWeight:700}}>🏖️ إجازة سنوية</span><br/><span style={{color:T.tm,fontSize:12}}>الرصيد المتاح: <b style={{color:lb>0?T.gn:T.rd}}>{lb} يوم</b>{lb>0?" — يُحسب راتب يوم كامل":" — يُخصم من الراتب كغياب"}</span></div>})()}
 </div>)}
 </div>}
 {selE?.type==="hourly"&&<div style={{background:T.og+"08",border:"1px solid "+T.og+"25",borderRadius:12,padding:18,marginBottom:18}}>
@@ -734,7 +744,7 @@ return <tr key={r.id} style={{background:rowBg}}><td style={TD}><input type="che
 <tbody>{bulkRows.map((r,i)=><tr key={r.id} style={{opacity:r.ex?0.4:1}}>
 <td style={{...TD,fontWeight:600}}>{r.name}</td>
 <td style={TD}>{r.type==="salary"?<span style={sB}>💼</span>:<span style={hB}>⏰</span>}</td>
-{!isFriday(bulkDate)&&<td style={TD}>{r.ex?"—":r.type==="salary"?<div style={{display:"flex",gap:4}}><button style={B(T.gn,r.status!=="present","sm")} onClick={()=>{const n=[...bulkRows];n[i]={...n[i],status:"present"};setBulkRows(n)}}>✅</button><button style={B(T.rd,r.status!=="absent","sm")} onClick={()=>{const n=[...bulkRows];n[i]={...n[i],status:"absent"};setBulkRows(n)}}>❌</button></div>:"—"}</td>}
+{!isFriday(bulkDate)&&<td style={TD}>{r.ex?"—":r.type==="salary"?<div style={{display:"flex",gap:4}}><button style={B(T.gn,r.status!=="present","sm")} onClick={()=>{const n=[...bulkRows];n[i]={...n[i],status:"present"};setBulkRows(n)}}>✅</button><button style={B(T.rd,r.status!=="absent","sm")} onClick={()=>{const n=[...bulkRows];n[i]={...n[i],status:"absent"};setBulkRows(n)}}>❌</button><button style={B(T.bk,r.status!=="leave","sm")} onClick={()=>{const n=[...bulkRows];n[i]={...n[i],status:"leave"};setBulkRows(n)}}>🏖️</button></div>:"—"}</td>}
 <td style={TD}>{r.ex?"—":isFriday(bulkDate)&&r.type==="salary"?
 <div style={{display:"flex",gap:4,alignItems:"center"}}>
 {r.status!=="absent"&&<input type="number" min="0" step="0.5" style={{...I,width:70,padding:"5px 8px",borderColor:T.og+"80"}} value={r.friHours!==undefined&&r.friHours!==""?r.friHours:""} placeholder={String(r.hours||8)} onChange={e=>{const n=[...bulkRows];n[i]={...n[i],friHours:e.target.value};setBulkRows(n)}}/>}
@@ -744,7 +754,7 @@ return <tr key={r.id} style={{background:rowBg}}><td style={TD}><input type="che
 <td style={TD}>{r.ex?<span style={BG(T.og)}>مسجل</span>:<span style={BG(T.gn)}>جديد</span>}</td>
 </tr>)}</tbody></table></div>}
 <div style={{display:"flex",gap:12,marginTop:18}}>
-<button style={B(T.pr,false,"lg")} onClick={()=>{if(!bulkDate||!bulkProj){nt("اختر التاريخ والمشروع","err");return}const isFri=isFriday(bulkDate);var cnt=0;up(d=>{bulkRows.forEach(r=>{if(r.ex)return;var emp2=d.employees.find(e=>e.id===r.id);if(!emp2)return;let rec;if(emp2.type==="salary"){if(isFri){const isAbs=r.status==="absent";const fh=isAbs?0:(r.friHours===""||r.friHours===undefined?emp2.hoursPerDay||8:Number(r.friHours));rec={id:gid(),employeeId:r.id,date:bulkDate,projectId:bulkProj,status:isAbs?"fri_absent":"friday",overtime:0,hours:0,baseHours:0,friHours:fh}}else{rec={id:gid(),employeeId:r.id,date:bulkDate,projectId:bulkProj,status:r.status,overtime:r.status==="present"?Number(r.overtime)||0:0,hours:emp2.hoursPerDay||8,baseHours:emp2.hoursPerDay||8,friHours:0}}}else{rec={id:gid(),employeeId:r.id,date:bulkDate,projectId:bulkProj,status:"present",overtime:0,hours:Number(r.hours)||0,baseHours:0,friHours:0}}d.attendance.push(rec);cnt++})});addLog("إدخال جماعي",cnt+" سجل - "+bulkDate+(isFri?" (جمعة)":""));nt("تم "+cnt+" سجل");setShBulk(false)}}>💾 حفظ</button>
+<button style={B(T.pr,false,"lg")} onClick={()=>{if(!bulkDate||!bulkProj){nt("اختر التاريخ والمشروع","err");return}const isFri=isFriday(bulkDate);var cnt=0;up(d=>{bulkRows.forEach(r=>{if(r.ex)return;var emp2=d.employees.find(e=>e.id===r.id);if(!emp2)return;let rec;if(emp2.type==="salary"){if(isFri){const isAbs=r.status==="absent";const fh=isAbs?0:(r.friHours===""||r.friHours===undefined?emp2.hoursPerDay||8:Number(r.friHours));rec={id:gid(),employeeId:r.id,date:bulkDate,projectId:bulkProj,status:isAbs?"fri_absent":"friday",overtime:0,hours:0,baseHours:0,friHours:fh}}else if(r.status==="leave"){rec={id:gid(),employeeId:r.id,date:bulkDate,projectId:bulkProj,status:"leave",overtime:0,hours:emp2.hoursPerDay||8,baseHours:emp2.hoursPerDay||8,friHours:0}}else{rec={id:gid(),employeeId:r.id,date:bulkDate,projectId:bulkProj,status:r.status,overtime:r.status==="present"?Number(r.overtime)||0:0,hours:emp2.hoursPerDay||8,baseHours:emp2.hoursPerDay||8,friHours:0}}}else{rec={id:gid(),employeeId:r.id,date:bulkDate,projectId:bulkProj,status:"present",overtime:0,hours:Number(r.hours)||0,baseHours:0,friHours:0}}d.attendance.push(rec);cnt++})});addLog("إدخال جماعي",cnt+" سجل - "+bulkDate+(isFri?" (جمعة)":""));nt("تم "+cnt+" سجل");setShBulk(false)}}>💾 حفظ</button>
 <button style={B(T.tm,true)} onClick={()=>setShBulk(false)}>إلغاء</button></div>
 </div></div>}
 {shCopy&&<div style={MO} onClick={e=>{if(e.target===e.currentTarget)setShCopy(false)}}><div style={MX}>
@@ -968,7 +978,7 @@ return <div key={bk.key} style={{display:"flex",justifyContent:"space-between",a
 
 };
 const Emp=()=>{const[sh,setSh]=useState(false);const[fm,setFm]=useState({name:"",type:"salary",baseSalary:"",hourlyRate:"",hoursPerDay:"8",overtimeRate:"",startDate:""});const[ei,setEi]=useState(null);const eRef=useRef();const[srch,setSrch]=useState("");const[histEmp,setHistEmp]=useState(null);
-const[rateModal,setRateModal]=useState(null);const[rateFrom,setRateFrom]=useState("current");const[rateCM,setRateCM]=useState(fM);const[rateCY,setRateCY]=useState(fY);const[rateReason,setRateReason]=useState("");const[allowEmp,setAllowEmp]=useState(null);const[allowFm,setAllowFm]=useState({name:"",amount:"",type:"permanent",month:String(fY)+"-"+String(fM).padStart(2,"0"),from:String(fY)+"-"+String(fM).padStart(2,"0"),months:"3"});
+const[rateModal,setRateModal]=useState(null);const[rateFrom,setRateFrom]=useState("current");const[rateCM,setRateCM]=useState(fM);const[rateCY,setRateCY]=useState(fY);const[rateReason,setRateReason]=useState("");const[allowEmp,setAllowEmp]=useState(null);const[allowFm,setAllowFm]=useState({name:"",amount:"",type:"permanent",month:String(fY)+"-"+String(fM).padStart(2,"0"),from:String(fY)+"-"+String(fM).padStart(2,"0"),months:"3"});const[leaveEmp,setLeaveEmp]=useState(null);const[leaveAdd,setLeaveAdd]=useState("");
 const cls=()=>{setFm({name:"",type:"salary",baseSalary:"",hourlyRate:"",hoursPerDay:"8",overtimeRate:""});setEi(null);setSh(false);setRateModal(null)};
 
 // حفظ الموظف مع سجل السعر التاريخي
@@ -1012,7 +1022,7 @@ const EmpT=({emps,type})=>{const fe=fltEmps(emps);return <div style={C({borderRi
 {fe.length===0?<p style={{color:T.tm,textAlign:"center",padding:20}}>{srch?"لا نتائج":"لا يوجد"}</p>:<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:0}}>
 <thead><tr><th style={TH}>#</th><th style={TH}>الاسم</th><th style={TH}>{type==="salary"?"الراتب":"سعر الساعة"}</th>{type==="salary"&&<th style={TH}>ساعات/يوم</th>}{type==="salary"&&<th style={TH}>سعر الإضافي</th>}<th style={TH}>إجراءات</th></tr></thead>
 <tbody>{fe.map((e,i)=><tr key={e.id}><td style={TD}>{i+1}</td><td style={{...TD,fontWeight:700}}>{srch.trim()?<span dangerouslySetInnerHTML={{__html:e.name.replace(new RegExp(srch.trim(),"g"),"<mark style='background:"+T.og+"40;color:"+T.og+";border-radius:3px;padding:0 2px'>$&</mark>")}}/>:e.name}</td><td style={{...TD,fontWeight:600}}>{type==="salary"?e.baseSalary?.toLocaleString():e.hourlyRate} {cfg.currency}</td>{type==="salary"&&<td style={TD}>{e.hoursPerDay||8}</td>}{type==="salary"&&<td style={TD}>{e.overtimeRate&&e.overtimeRate>0?<span style={{color:T.og,fontWeight:700}}>✏️ {e.overtimeRate} {cfg.currency}/س</span>:<span style={{color:T.tm,fontSize:11}}>⚙️ تلقائي</span>}</td>}
-<td style={TD}><div style={{display:"flex",gap:8}}><button style={B(T.bk,false,"sm")} onClick={()=>setHistEmp(Object.assign({},e,{allowances:getActiveAllowances(e,fY,fM)}))} title="السجل التاريخي">📋</button>{e.type==="salary"&&<button style={B(T.ac,false,"sm")} onClick={()=>setAllowEmp(e)} title="البدلات">💰</button>}<button style={B(T.pr,false,"sm")} onClick={()=>{setFm({name:e.name,type:e.type,baseSalary:String(e.baseSalary||""),hourlyRate:String(e.hourlyRate||""),hoursPerDay:String(e.hoursPerDay||8),overtimeRate:String(e.overtimeRate||""),startDate:e.startDate||""});setEi(e.id);setSh(true)}}>✏️</button><button style={B(T.rd,false,"sm")} onClick={()=>{if(window.confirm("⚠️ أرشفة "+e.name+"؟\nسيتم نقله إلى الأرشيف مع الاحتفاظ بكل بياناته.\n(استخدم «حذف نهائي» من الأرشيف لإزالته نهائياً)")){up(d=>{if(!d.archivedEmployees)d.archivedEmployees=[];d.archivedEmployees.push({...e,_archivedAt:new Date().toISOString()});d.employees=d.employees.filter(x=>x.id!==e.id)});addLog("أرشفة موظف",e.name);nt("تم أرشفة "+e.name+" 📦")}}}>📦</button></div></td></tr>)}</tbody></table></div>}</div>};
+<td style={TD}><div style={{display:"flex",gap:6,flexWrap:"wrap"}}><button style={B(T.bk,false,"sm")} onClick={()=>setHistEmp(Object.assign({},e,{allowances:getActiveAllowances(e,fY,fM)}))} title="السجل التاريخي">📋</button>{e.type==="salary"&&<button style={B(T.ac,false,"sm")} onClick={()=>setAllowEmp(e)} title="البدلات">💰</button>}{e.type==="salary"&&<button style={{...B(T.bk,false,"sm"),background:T.bk+"22",border:"1px solid "+T.bk+"60",color:T.bk}} onClick={()=>{setLeaveEmp(e);setLeaveAdd("")}} title="رصيد الإجازة">🏖️ {e.leaveBalance||0}</button>}<button style={B(T.pr,false,"sm")} onClick={()=>{setFm({name:e.name,type:e.type,baseSalary:String(e.baseSalary||""),hourlyRate:String(e.hourlyRate||""),hoursPerDay:String(e.hoursPerDay||8),overtimeRate:String(e.overtimeRate||""),startDate:e.startDate||""});setEi(e.id);setSh(true)}}>✏️</button><button style={B(T.rd,false,"sm")} onClick={()=>{if(window.confirm("⚠️ أرشفة "+e.name+"؟\nسيتم نقله إلى الأرشيف مع الاحتفاظ بكل بياناته.\n(استخدم «حذف نهائي» من الأرشيف لإزالته نهائياً)")){up(d=>{if(!d.archivedEmployees)d.archivedEmployees=[];d.archivedEmployees.push({...e,_archivedAt:new Date().toISOString()});d.employees=d.employees.filter(x=>x.id!==e.id)});addLog("أرشفة موظف",e.name);nt("تم أرشفة "+e.name+" 📦")}}}>📦</button></div></td></tr>)}</tbody></table></div>}</div>};
 return <div>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:10}}>
 <div><h1 style={{fontSize:26,fontWeight:800,marginBottom:6}}>الموظفون</h1></div>
@@ -1091,6 +1101,51 @@ return <div>
   setAllowFm({name:"",amount:"",type:"permanent",month:String(fY)+"-"+String(fM).padStart(2,"0"),from:String(fY)+"-"+String(fM).padStart(2,"0"),months:"3"});
   nt("تم إضافة البدل");
 }}>✅ إضافة البدل</button>
+</div>
+</div></div>}
+
+{leaveEmp&&<div style={MO} onMouseDown={e=>{if(e.target===e.currentTarget)setLeaveEmp(null)}}>
+<div style={{...MX,maxWidth:480}} onMouseDown={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+<h3 style={{fontSize:20,fontWeight:800}}>🏖️ رصيد إجازات — {leaveEmp.name}</h3>
+<button onClick={()=>setLeaveEmp(null)} style={{background:"transparent",border:"none",fontSize:20,cursor:"pointer",color:T.tm}}>✕</button>
+</div>
+{/* الرصيد الحالي */}
+<div style={{background:T.pr+"12",border:"2px solid "+T.pr+"40",borderRadius:14,padding:20,marginBottom:20,textAlign:"center"}}>
+<div style={{fontSize:13,color:T.tm,marginBottom:6}}>الرصيد الحالي</div>
+<div style={{fontSize:48,fontWeight:800,color:(leaveEmp.leaveBalance||0)>0?T.gn:T.rd,lineHeight:1}}>{leaveEmp.leaveBalance||0}</div>
+<div style={{fontSize:14,color:T.tm,marginTop:4}}>يوم</div>
+</div>
+{/* إضافة/خصم يدوي */}
+<div style={{marginBottom:20}}>
+<label style={L}>إضافة أيام إجازة (يدوي)</label>
+<div style={{display:"flex",gap:10}}>
+<input type="number" style={{...I,flex:1}} value={leaveAdd} onChange={e=>setLeaveAdd(e.target.value)} placeholder="عدد الأيام (سالب للخصم)" min="-365" max="365"/>
+<button style={B(T.pr,false,"lg")} onClick={()=>{
+const n=Number(leaveAdd);
+if(!n||isNaN(n)){nt("أدخل عدد أيام","err");return}
+const newBal=Math.max(0,(leaveEmp.leaveBalance||0)+n);
+up(d=>{const i=d.employees.findIndex(x=>x.id===leaveEmp.id);if(i>=0){d.employees[i].leaveBalance=newBal;setLeaveEmp({...d.employees[i]})}});
+addLog("تعديل رصيد إجازة",leaveEmp.name+": "+(n>0?"+":"")+n+" يوم → "+newBal+" يوم");
+nt((n>0?"أضيف ":"خُصم ")+Math.abs(n)+" يوم — الرصيد: "+newBal);
+setLeaveAdd("");
+}}>💾 حفظ</button>
+</div>
+<p style={{fontSize:11,color:T.tm,marginTop:6}}>💡 أدخل رقماً موجباً للإضافة أو سالباً للخصم — الرصيد لا يقل عن صفر</p>
+</div>
+{/* سجل الإجازات المستخدمة هذا الشهر */}
+{(()=>{
+const lRecs=data.attendance.filter(a=>a.employeeId===leaveEmp.id&&a.status==="leave");
+const curMonthLRecs=lRecs.filter(a=>{const[y,m]=a.date.split("-");return +y===fY&&+m===fM});
+const totalUsed=lRecs.length;
+if(!lRecs.length)return <p style={{fontSize:13,color:T.tm,textAlign:"center",padding:16}}>لا توجد إجازات مسجّلة بعد</p>;
+return <div>
+<div style={{fontSize:13,color:T.tm,marginBottom:8}}>📅 إجازات مسجّلة — {mL(fY,fM)}: <strong style={{color:T.pl}}>{curMonthLRecs.length} يوم</strong> | إجمالي كل الأشهر: <strong style={{color:T.pl}}>{totalUsed} يوم</strong></div>
+{curMonthLRecs.length>0&&<div style={{maxHeight:160,overflowY:"auto"}}>{curMonthLRecs.sort((a,b)=>a.date.localeCompare(b.date)).map(r=><div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 12px",background:T.sf,borderRadius:8,marginBottom:6,fontSize:13}}><span>📅 {fd(r.date)}</span><span style={{color:T.bk,fontSize:11}}>🏖️ يوم إجازة</span></div>)}</div>}
+</div>;
+})()}
+<div style={{display:"flex",gap:12,marginTop:20}}>
+<button style={B(T.tm,true)} onClick={()=>setLeaveEmp(null)}>إغلاق</button>
 </div>
 </div></div>}
 
@@ -1174,17 +1229,21 @@ return <div key={i} style={{display:"flex",gap:14,marginBottom:16}}>
 {(()=>{
 const attRecs=data.attendance.filter(a=>a.employeeId===histEmp.id);
 const months={};
-attRecs.forEach(a=>{const k=a.date.slice(0,7);if(!months[k])months[k]={present:0,absent:0,friday:0,ot:0};
-if(a.status==="present")months[k].present++;else if(a.status==="absent")months[k].absent++;else if(a.status==="friday"||a.status==="fri_absent")months[k].friday++;
+attRecs.forEach(a=>{const k=a.date.slice(0,7);if(!months[k])months[k]={present:0,absent:0,friday:0,leave:0,ot:0};
+if(a.status==="present")months[k].present++;else if(a.status==="absent")months[k].absent++;else if(a.status==="friday"||a.status==="fri_absent")months[k].friday++;else if(a.status==="leave")months[k].leave++;
 months[k].ot+=a.overtime||0;});
 const mArr=Object.entries(months).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,6);
 if(!mArr.length)return null;
 return <div style={{marginTop:20}}>
 <h4 style={{fontSize:14,fontWeight:700,marginBottom:12,color:T.tm}}>📊 ملخص الدوام (آخر 6 أشهر)</h4>
+{histEmp.type==="salary"&&<div style={{background:T.bk+"12",border:"1px solid "+T.bk+"40",borderRadius:10,padding:"10px 14px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+<span style={{fontSize:13,color:T.tm}}>🏖️ رصيد الإجازات الحالي</span>
+<span style={{fontSize:18,fontWeight:800,color:(histEmp.leaveBalance||0)>0?T.gn:T.rd}}>{histEmp.leaveBalance||0} يوم</span>
+</div>}
 <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0}}>
-<thead><tr>{["الشهر","حضور","غياب","جمعة","إضافي"].map(h=><th key={h} style={{...TH,fontSize:11}}>{h}</th>)}</tr></thead>
+<thead><tr>{["الشهر","حضور","غياب","🏖️ إجازة","جمعة","إضافي"].map(h=><th key={h} style={{...TH,fontSize:11}}>{h}</th>)}</tr></thead>
 <tbody>{mArr.map(([k,v])=>{const[y,m]=k.split("-");const mn=["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"][Number(m)-1];
-return <tr key={k}><td style={{...TD,fontWeight:700}}>{mn} {y}</td><td style={{...TD,color:T.gn}}>{v.present}</td><td style={{...TD,color:v.absent>0?T.rd:T.tm}}>{v.absent}</td><td style={{...TD,color:T.bk}}>{v.friday}</td><td style={{...TD,color:T.og}}>{rn(v.ot,1)}</td></tr>})}
+return <tr key={k}><td style={{...TD,fontWeight:700}}>{mn} {y}</td><td style={{...TD,color:T.gn}}>{v.present}</td><td style={{...TD,color:v.absent>0?T.rd:T.tm}}>{v.absent}</td><td style={{...TD,color:v.leave>0?T.bk:T.tm}}>{v.leave>0?v.leave:"—"}</td><td style={{...TD,color:T.bk}}>{v.friday}</td><td style={{...TD,color:T.og}}>{rn(v.ot,1)}</td></tr>})}
 </tbody></table>
 </div>;
 })()}
@@ -1572,6 +1631,7 @@ else{var b=new Blob([html2],{type:"text/html"});var u=URL.createObjectURL(b);var
 <th style={TH}>النوع</th>
 <SH col="present" label="حضور"/>
 <th style={TH}>غياب</th>
+<th style={TH}>🏖️ إجازة</th>
 <th style={TH}>إضافي (س)</th>
 <th style={TH}>أيام الجمعة</th>
 <SH col="basePay" label="أساسي"/><SH col="allowancesTotal" label="بدلات"/>
@@ -1601,6 +1661,7 @@ return <tr key={p.emp.id}>
 <td style={TD}>{iS?<span style={sB}>💼</span>:<span style={hB}>⏰</span>}</td>
 <td style={{...TD,color:T.gn,fontWeight:600}}>{iS?p.present+" يوم":p.totalHours+" س"}</td>
 <td style={{...TD,color:p.absent>0?T.rd:T.tm,fontWeight:p.absent>0?700:400}}>{p.absent>0?p.absent+" يوم":"—"}</td>
+<td style={TD}>{iS&&p.leaveDays>0?<span style={{color:p.unpaidLeaveDays>0?T.og:T.bk,fontWeight:700}}>🏖️ {p.leaveDays}{p.unpaidLeaveDays>0?<span style={{color:T.rd,fontSize:10,display:"block"}}>غ.بدون دفع: {p.unpaidLeaveDays}</span>:null}</span>:<span style={{color:T.tm,fontSize:11}}>—</span>}</td>
 <td style={TD}>{iS?<span style={{fontWeight:600,color:p.totalOT>0?T.ac:T.tm}}>{p.totalOT>0?rn(p.totalOT,1)+"س":"—"}</span>:"—"}</td>
 <td style={TD}>{iS&&p.fridayDays>0?<span style={{color:T.og,fontWeight:700}}>🕌 {p.fridayDays}يوم<br/><span style={{fontSize:10}}>{rn(p.fridayHours,1)}س</span></span>:<span style={{color:T.tm,fontSize:11}}>—</span>}</td>
 {/* الحساب */}
@@ -1609,7 +1670,7 @@ return <tr key={p.emp.id}>
 <td style={{...TD,background:T.pr+"06",color:p.bonus>0?T.gn:T.tm}}>{p.bonus>0?"+"+rn(p.bonus,0).toLocaleString():"—"}</td>
 <td style={{...TD,background:T.pr+"10",fontWeight:700,color:T.pr}}>{rn(grossBeforeDed,0).toLocaleString()}</td>
 {/* الخصومات */}
-<td style={{...TD,background:T.rd+"04",color:p.deduction>0?T.rd:T.tm}}>{p.deduction>0?"−"+rn(p.deduction,0).toLocaleString():"—"}</td>
+<td style={{...TD,background:T.rd+"04",color:(p.deduction>0||p.unpaidLeaveDed>0)?T.rd:T.tm}}>{p.deduction>0||p.unpaidLeaveDed>0?"−"+rn((p.deduction||0)+(p.unpaidLeaveDed||0),0).toLocaleString()+(p.unpaidLeaveDed>0?" (غ.إجازة "+rn(p.unpaidLeaveDed,0)+")"  :""):"—"}</td>
 <td style={{...TD,background:T.rd+"04",color:p.advance>0?T.og:T.tm}}>{p.advance>0?"−"+rn(p.advance,0).toLocaleString():"—"}</td>
 <td style={{...TD,fontWeight:800,fontSize:15,background:T.gn+"08",color:T.gn}}>{rn(p.net,0).toLocaleString()}</td>
 {/* الدفع */}
