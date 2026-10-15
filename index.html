@@ -13,8 +13,8 @@ const{useState,useEffect,useCallback,useMemo,useRef}=React;
 const DB="payroll_v11";
 const THEMES={midnight:{name:"الأزرق الداكن",bg:"#060615",sf:"#0c0c28",cd:"#141440",bd:"#252565",pr:"#5b7cfa",pl:"#7d9aff",ac:"#00e5a0",rd:"#ff5068",og:"#ffb340",tx:"#e4e4f0",tm:"#8888b0",gn:"#2ee87a",bk:"#4fc3f7"},ocean:{name:"المحيط",bg:"#04111d",sf:"#0a1f35",cd:"#0f2a45",bd:"#1a3d5c",pr:"#1e90ff",pl:"#60b0ff",ac:"#00cec9",rd:"#e74c3c",og:"#f39c12",tx:"#ecf0f1",tm:"#7f8c9a",gn:"#2ecc71",bk:"#74b9ff"},emerald:{name:"الزمردي",bg:"#0a120a",sf:"#111e11",cd:"#182a18",bd:"#254025",pr:"#27ae60",pl:"#55d98a",ac:"#f1c40f",rd:"#e74c3c",og:"#e67e22",tx:"#e8f5e9",tm:"#81a981",gn:"#2ecc71",bk:"#00b894"},royal:{name:"الملكي",bg:"#120a1e",sf:"#1a1030",cd:"#251845",bd:"#3a2868",pr:"#9b59b6",pl:"#bb80d3",ac:"#f39c12",rd:"#e74c3c",og:"#e67e22",tx:"#f0e6ff",tm:"#9988bb",gn:"#2ecc71",bk:"#a29bfe"},light:{name:"فاتح",bg:"#f0f2f5",sf:"#ffffff",cd:"#ffffff",bd:"#e0e4ea",pr:"#2563eb",pl:"#3b82f6",ac:"#059669",rd:"#dc2626",og:"#d97706",tx:"#1f2937",tm:"#6b7280",gn:"#16a34a",bk:"#0284c7"},sunset:{name:"الغروب",bg:"#1a0a08",sf:"#2a1210",cd:"#3a1a15",bd:"#5a2a20",pr:"#e85d3a",pl:"#ff8c69",ac:"#ffd93d",rd:"#ff4040",og:"#ff9f43",tx:"#fff5ee",tm:"#c09080",gn:"#6bcb77",bk:"#ffc58b"},carbon:{name:"الكربوني",bg:"#0d0d0d",sf:"#1a1a1a",cd:"#222222",bd:"#3a3a3a",pr:"#10b981",pl:"#34d399",ac:"#f59e0b",rd:"#ef4444",og:"#f97316",tx:"#e5e5e5",tm:"#888888",gn:"#22c55e",bk:"#38bdf8"},cherry:{name:"الكرزي",bg:"#150810",sf:"#1e0e18",cd:"#2d1525",bd:"#4a2040",pr:"#ec4899",pl:"#f472b6",ac:"#8b5cf6",rd:"#f43f5e",og:"#fb923c",tx:"#fce7f3",tm:"#a0708a",gn:"#4ade80",bk:"#c084fc"},sand:{name:"رملي",bg:"#faf6f0",sf:"#fff8ef",cd:"#fff8ef",bd:"#e8dcc8",pr:"#92714a",pl:"#b0906a",ac:"#5a9a4a",rd:"#c44536",og:"#d4884a",tx:"#3d2b1f",tm:"#8a7a6a",gn:"#6a9a5a",bk:"#6a8caf"},navy:{name:"بحري",bg:"#0a1628",sf:"#0f1f3a",cd:"#152a4a",bd:"#1e3a60",pr:"#3a86c8",pl:"#5aa0e0",ac:"#e8a838",rd:"#e05555",og:"#e89030",tx:"#d0dae8",tm:"#6a80a0",gn:"#48b070",bk:"#58b8e8"}};
 const defCfg={companyName:"شركة الإدارة",daysPerMonth:30,overtimeMultiplier:1.5,currency:"ر.س",theme:"midnight",deliveryLocations:["المكتب الرئيسي"],defaultHoursPerDay:8,showAbsentColumn:true,enableBankTransfer:true,monthlyDays:{}};
-const defData={employees:[],projects:[],attendance:[],transactions:[],archives:[],payments:[],archivedEmployees:[],settings:{...defCfg}};
-function dbL(){try{const r=JSON.parse(localStorage.getItem(DB));if(r){["employees","projects","attendance","transactions","archives","payments","auditLog","templates","archivedEmployees"].forEach(k=>{if(!Array.isArray(r[k]))r[k]=[]});if(!r.settings)r.settings={...defCfg};if(!r.settings.deliveryLocations)r.settings.deliveryLocations=["المكتب الرئيسي"];if(!r.settings.monthlyDays)r.settings.monthlyDays={};(r.employees||[]).forEach(function(e){if(!e.allowances)e.allowances=[]});return r}}catch{}return JSON.parse(JSON.stringify(defData))}
+const defData={employees:[],projects:[],attendance:[],transactions:[],archives:[],payments:[],archivedEmployees:[],frozenAllowances:{},settings:{...defCfg}};
+function dbL(){try{const r=JSON.parse(localStorage.getItem(DB));if(r){["employees","projects","attendance","transactions","archives","payments","auditLog","templates","archivedEmployees"].forEach(k=>{if(!Array.isArray(r[k]))r[k]=[]});if(!r.settings)r.settings={...defCfg};if(!r.settings.deliveryLocations)r.settings.deliveryLocations=["المكتب الرئيسي"];if(!r.settings.monthlyDays)r.settings.monthlyDays={};if(!r.frozenAllowances)r.frozenAllowances={};(r.employees||[]).forEach(function(e){if(!e.allowances)e.allowances=[]});return r}}catch{}return JSON.parse(JSON.stringify(defData))}
 function dbS(d){
   try{
     localStorage.setItem(DB,JSON.stringify(d));
@@ -315,11 +315,26 @@ useEffect(()=>{
   if(!cfg||!cfg.databaseURL){setFbStatus("no_cfg");return}
   fbInit(cfg,function(remoteData){
     setData(function(prev){
-      // only update if remote is newer (has more records or different ts)
       var rTs=remoteData._ts||0;var lTs=prev._ts||0;
       if(rTs>lTs||!prev._ts){
         dbS(remoteData);
+        // إشعار إذا كان التحديث من مستخدم آخر (ليس من هذه النافذة)
+        var who=remoteData._updatedBy;
+        if(who&&prev._ts&&rTs-lTs>2000){
+          setTimeout(function(){
+            var ev=new CustomEvent("fb-remote-update",{detail:{who:who,ts:rTs}});
+            window.dispatchEvent(ev);
+          },100);
+        }
         return remoteData;
+      }
+      // تعارض: البيانات المحلية أحدث — لكن Firebase أرسل تحديثاً من مستخدم آخر
+      if(rTs>0&&lTs>0&&Math.abs(rTs-lTs)<3000&&remoteData._updatedBy){
+        // كتابتان متزامنتان — أبق المحلي وأشعر المستخدم
+        setTimeout(function(){
+          var ev=new CustomEvent("fb-conflict",{detail:{who:remoteData._updatedBy}});
+          window.dispatchEvent(ev);
+        },100);
       }
       return prev;
     });
@@ -328,6 +343,14 @@ useEffect(()=>{
 },[]);
 useEffect(()=>{if(toast){const t=setTimeout(()=>setToast(null),3500);return()=>clearTimeout(t)}},[toast]);
 const nt=(m,tp="ok")=>setToast({m,tp});
+// استماع لأحداث Firebase المتزامنة
+useEffect(()=>{
+  const onRemote=e=>nt("🔄 تم تحديث البيانات بواسطة: "+e.detail.who,"info");
+  const onConflict=e=>nt("⚠️ تعارض: "+e.detail.who+" كتب في نفس الوقت — بياناتك محفوظة","warn");
+  window.addEventListener("fb-remote-update",onRemote);
+  window.addEventListener("fb-conflict",onConflict);
+  return()=>{window.removeEventListener("fb-remote-update",onRemote);window.removeEventListener("fb-conflict",onConflict)};
+},[]);
 // up: يحفظ البيانات مباشرة مع كل تعديل بدون انتظار useEffect
 const up=fn=>setData(p=>{const d=JSON.parse(JSON.stringify(p));fn(d);d._ts=Date.now();dbS(d);fbWrite(d);return d});
 const addLog=(act,det)=>up(d=>{if(!d.auditLog)d.auditLog=[];d.auditLog.unshift({id:gid(),action:act,details:det||'',date:new Date().toISOString()});if(d.auditLog.length>500)d.auditLog=d.auditLog.slice(0,500)});
@@ -377,7 +400,10 @@ const hr=dr/(effHPD||8);
 const otHr=effOTRate&&effOTRate>0?effOTRate:rn(hr*(cfg.overtimeMultiplier||1.5));
 const bp=rn(prs*dr);
 const op=rn(ot*otHr);
-const allowAmt=prs>0?getActiveAllowances(empRaw,fY,fM).reduce(function(s,a){return s+(a.amount||0)},0):0;
+// البدلات التاريخية: استخدم القيمة المجمّدة وقت الأرشفة إن وُجدت
+const frozenKey=eid+"-"+fY+"-"+String(fM).padStart(2,"0");
+const frozenAmt=(data.frozenAllowances||{})[frozenKey];
+const allowAmt=frozenAmt!==undefined?frozenAmt:(prs>0?getActiveAllowances(empRaw,fY,fM).reduce(function(s,a){return s+(a.amount||0)},0):0);
 const g=rn(bp+op+bon),n=rn(g-ded-adv+allowAmt),rem=rn(n-tP);
 const pD={};nonFriRecs.forEach(r=>{pD[r.projectId]=(pD[r.projectId]||0)+1});friRecs.forEach(r=>{pD[r.projectId]=(pD[r.projectId]||0)+1});
 const pC={};const totalPresent=prs+(friRecs.length)||1;Object.entries(pD).forEach(([p,d])=>{pC[p]=rn((d/totalPresent)*n)});
@@ -1904,8 +1930,16 @@ const Arch=()=>{
 const doA=()=>{if(isAr){nt("الشهر مؤرشف مسبقاً","err");return}if(!window.confirm("أرشفة "+mL(fY,fM)+"؟ لا يمكن التراجع"))return;
 const ps=data.employees.map(e=>calc(e.id)).filter(Boolean);
 const snapshot={employees:data.employees.map(e=>({...e})),projects:data.projects.map(p=>({...p})),attendance:[...mA],transactions:[...mT],payments:[...mP]};
-up(d=>{d.archives.push({id:gid(),year:fY,month:fM,date:new Date().toISOString(),totalNet:rn(ps.reduce((s,p)=>s+p.net,0)),totalPaid:rn(ps.reduce((s,p)=>s+p.totalPaid,0)),totalRem:rn(ps.reduce((s,p)=>s+p.remaining,0)),count:ps.length,snapshot})});
-addLog("أرشفة",mL(fY,fM));nt("تمت الأرشفة ✅")};
+up(d=>{
+  d.archives.push({id:gid(),year:fY,month:fM,date:new Date().toISOString(),totalNet:rn(ps.reduce((s,p)=>s+p.net,0)),totalPaid:rn(ps.reduce((s,p)=>s+p.totalPaid,0)),totalRem:rn(ps.reduce((s,p)=>s+p.remaining,0)),count:ps.length,snapshot});
+  // ❄️ تجميد البدلات لكل موظف في هذا الشهر
+  if(!d.frozenAllowances)d.frozenAllowances={};
+  ps.forEach(function(p){
+    var key=p.emp.id+"-"+fY+"-"+String(fM).padStart(2,"0");
+    d.frozenAllowances[key]=p.allowancesTotal||0;
+  });
+});
+addLog("أرشفة",mL(fY,fM));nt("تمت الأرشفة ✅ (بدلات مجمّدة)")};
 const delArch=id=>{if(!window.confirm("حذف هذا الأرشيف نهائياً؟"))return;up(d=>{d.archives=d.archives.filter(a=>a.id!==id)});nt("تم الحذف")};
 const expArch=a=>{if(!a.snapshot){nt("لا يوجد snapshot لهذا الأرشيف","err");return}const wb=XLSX.utils.book_new();const emps=a.snapshot.employees||[];const atts=a.snapshot.attendance||[];const projs=a.snapshot.projects||[];const pays=a.snapshot.payments||[];const ws=XLSX.utils.aoa_to_sheet([["الموظف","النوع","أيام/ساعات","صافي الراتب","مدفوع","متبقي","موقع التسليم"]]); XLSX.utils.book_append_sheet(wb,ws,"الرواتب");XLSX.writeFile(wb,"أرشيف_"+mL(a.year,a.month)+".xlsx");nt("تم التصدير")};
 const sorted=[...(data.archives||[])].sort((a,b)=>b.date?.localeCompare(a.date||"")||0);
@@ -2197,7 +2231,7 @@ return <div style={{minHeight:"100vh",background:isL?T.bg:"linear-gradient(160de
 <div style={{display:pg==="log"?"block":"none"}}>{LogEl}</div>
 <div style={{display:pg==="set"?"block":"none"}}>{SetEl}</div>
 </div>
-{toast&&<div style={{position:"fixed",bottom:28,left:"50%",transform:"translateX(-50%)",zIndex:2000,padding:"14px 28px",borderRadius:14,background:toast.tp==="err"?T.rd:T.gn,color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",boxShadow:"0 10px 40px rgba(0,0,0,0.4)",animation:"ti 0.35s cubic-bezier(0.175,0.885,0.32,1.275)"}}>{toast.tp==="err"?"❌":"✅"} {toast.m}</div>}
+{toast&&<div style={{position:"fixed",bottom:28,left:"50%",transform:"translateX(-50%)",zIndex:2000,padding:"14px 28px",borderRadius:14,background:toast.tp==="err"?T.rd:toast.tp==="warn"?T.og:toast.tp==="info"?T.bk:T.gn,color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",boxShadow:"0 10px 40px rgba(0,0,0,0.4)",animation:"ti 0.35s cubic-bezier(0.175,0.885,0.32,1.275)",maxWidth:420,textAlign:"center"}}>{toast.tp==="err"?"❌":toast.tp==="warn"?"⚠️":toast.tp==="info"?"🔄":"✅"} {toast.m}</div>}
 <style>{`@keyframes ti{from{opacity:0;transform:translateX(-50%) translateY(20px) scale(0.9)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}*{scrollbar-width:thin;scrollbar-color:${T.bd} transparent}input:focus,select:focus{border-color:${T.pr}!important;box-shadow:0 0 0 3px ${T.pr}20}button:hover{opacity:0.92}tr:hover td{background:${T.pr}06!important}select option{background:${T.sf};color:${T.tx}}`}</style>
 </div>}
 
