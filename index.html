@@ -13,8 +13,8 @@ const{useState,useEffect,useCallback,useMemo,useRef}=React;
 const DB="payroll_v11";
 const THEMES={midnight:{name:"الأزرق الداكن",bg:"#060615",sf:"#0c0c28",cd:"#141440",bd:"#252565",pr:"#5b7cfa",pl:"#7d9aff",ac:"#00e5a0",rd:"#ff5068",og:"#ffb340",tx:"#e4e4f0",tm:"#8888b0",gn:"#2ee87a",bk:"#4fc3f7"},ocean:{name:"المحيط",bg:"#04111d",sf:"#0a1f35",cd:"#0f2a45",bd:"#1a3d5c",pr:"#1e90ff",pl:"#60b0ff",ac:"#00cec9",rd:"#e74c3c",og:"#f39c12",tx:"#ecf0f1",tm:"#7f8c9a",gn:"#2ecc71",bk:"#74b9ff"},emerald:{name:"الزمردي",bg:"#0a120a",sf:"#111e11",cd:"#182a18",bd:"#254025",pr:"#27ae60",pl:"#55d98a",ac:"#f1c40f",rd:"#e74c3c",og:"#e67e22",tx:"#e8f5e9",tm:"#81a981",gn:"#2ecc71",bk:"#00b894"},royal:{name:"الملكي",bg:"#120a1e",sf:"#1a1030",cd:"#251845",bd:"#3a2868",pr:"#9b59b6",pl:"#bb80d3",ac:"#f39c12",rd:"#e74c3c",og:"#e67e22",tx:"#f0e6ff",tm:"#9988bb",gn:"#2ecc71",bk:"#a29bfe"},light:{name:"فاتح",bg:"#f0f2f5",sf:"#ffffff",cd:"#ffffff",bd:"#e0e4ea",pr:"#2563eb",pl:"#3b82f6",ac:"#059669",rd:"#dc2626",og:"#d97706",tx:"#1f2937",tm:"#6b7280",gn:"#16a34a",bk:"#0284c7"},sunset:{name:"الغروب",bg:"#1a0a08",sf:"#2a1210",cd:"#3a1a15",bd:"#5a2a20",pr:"#e85d3a",pl:"#ff8c69",ac:"#ffd93d",rd:"#ff4040",og:"#ff9f43",tx:"#fff5ee",tm:"#c09080",gn:"#6bcb77",bk:"#ffc58b"},carbon:{name:"الكربوني",bg:"#0d0d0d",sf:"#1a1a1a",cd:"#222222",bd:"#3a3a3a",pr:"#10b981",pl:"#34d399",ac:"#f59e0b",rd:"#ef4444",og:"#f97316",tx:"#e5e5e5",tm:"#888888",gn:"#22c55e",bk:"#38bdf8"},cherry:{name:"الكرزي",bg:"#150810",sf:"#1e0e18",cd:"#2d1525",bd:"#4a2040",pr:"#ec4899",pl:"#f472b6",ac:"#8b5cf6",rd:"#f43f5e",og:"#fb923c",tx:"#fce7f3",tm:"#a0708a",gn:"#4ade80",bk:"#c084fc"},sand:{name:"رملي",bg:"#faf6f0",sf:"#fff8ef",cd:"#fff8ef",bd:"#e8dcc8",pr:"#92714a",pl:"#b0906a",ac:"#5a9a4a",rd:"#c44536",og:"#d4884a",tx:"#3d2b1f",tm:"#8a7a6a",gn:"#6a9a5a",bk:"#6a8caf"},navy:{name:"بحري",bg:"#0a1628",sf:"#0f1f3a",cd:"#152a4a",bd:"#1e3a60",pr:"#3a86c8",pl:"#5aa0e0",ac:"#e8a838",rd:"#e05555",og:"#e89030",tx:"#d0dae8",tm:"#6a80a0",gn:"#48b070",bk:"#58b8e8"}};
 const defCfg={companyName:"شركة الإدارة",daysPerMonth:30,overtimeMultiplier:1.5,currency:"ر.س",theme:"midnight",deliveryLocations:["المكتب الرئيسي"],defaultHoursPerDay:8,showAbsentColumn:true,enableBankTransfer:true,monthlyDays:{}};
-const defData={employees:[],projects:[],attendance:[],transactions:[],archives:[],payments:[],settings:{...defCfg}};
-function dbL(){try{const r=JSON.parse(localStorage.getItem(DB));if(r){["employees","projects","attendance","transactions","archives","payments","auditLog","templates"].forEach(k=>{if(!Array.isArray(r[k]))r[k]=[]});if(!r.settings)r.settings={...defCfg};if(!r.settings.deliveryLocations)r.settings.deliveryLocations=["المكتب الرئيسي"];if(!r.settings.monthlyDays)r.settings.monthlyDays={};(r.employees||[]).forEach(function(e){if(!e.allowances)e.allowances=[]});return r}}catch{}return JSON.parse(JSON.stringify(defData))}
+const defData={employees:[],projects:[],attendance:[],transactions:[],archives:[],payments:[],archivedEmployees:[],settings:{...defCfg}};
+function dbL(){try{const r=JSON.parse(localStorage.getItem(DB));if(r){["employees","projects","attendance","transactions","archives","payments","auditLog","templates","archivedEmployees"].forEach(k=>{if(!Array.isArray(r[k]))r[k]=[]});if(!r.settings)r.settings={...defCfg};if(!r.settings.deliveryLocations)r.settings.deliveryLocations=["المكتب الرئيسي"];if(!r.settings.monthlyDays)r.settings.monthlyDays={};(r.employees||[]).forEach(function(e){if(!e.allowances)e.allowances=[]});return r}}catch{}return JSON.parse(JSON.stringify(defData))}
 function dbS(d){
   try{
     localStorage.setItem(DB,JSON.stringify(d));
@@ -108,6 +108,8 @@ function fbWrite(d){
   _fbWriteTimer=setTimeout(function(){
     _fbIgnoreNext=true;
     var clean=JSON.parse(JSON.stringify(d));
+    // أضف معلومات آخر تحديث
+    try{var un=localStorage.getItem("payroll_username")||"مستخدم";clean._updatedBy=un;clean._updatedAt=Date.now();}catch{}
     _fbRef.set(clean).catch(function(e){console.error("FB write:",e);_fbIgnoreNext=false});
   },1500);
 }
@@ -394,7 +396,7 @@ const MF=()=><div style={{display:"flex",gap:10,alignItems:"center",marginBottom
 </div>
 <span style={{fontSize:11,color:T.tm}}>سعر اليوم: <b style={{color:T.ac}}>{rn((data.employees.find(e=>e.type==="salary")?.baseSalary||0)/mDays,1)}</b></span>
 </div>;
-const AW=()=>isAr?<div style={{background:T.og+"12",border:"1.5px solid "+T.og+"40",borderRadius:12,padding:"13px 18px",marginBottom:18,display:"flex",alignItems:"center",gap:12}}><span style={{fontSize:22}}>⚠️</span><span style={{fontSize:13,color:T.og,fontWeight:600}}>شهر مؤرشف</span></div>:null;
+const AW=()=>isAr?<div style={{background:T.og+"18",border:"2px solid "+T.og+"60",borderRadius:12,padding:"14px 18px",marginBottom:18,display:"flex",alignItems:"center",gap:12}}><span style={{fontSize:26}}>🔒</span><div><div style={{fontSize:14,color:T.og,fontWeight:700}}>شهر مؤرشف ومقفل</div><div style={{fontSize:12,color:T.tm,marginTop:3}}>لا يمكن تعديل البيانات في شهر مؤرشف — اختر شهراً آخر أو راجع سجل الأرشيف</div></div></div>:null;
 
 // ═══ DASHBOARD ═══
 const Dash=()=>{const[dFilt,setDFilt]=useState("all"); // all, salary, hourly
@@ -970,7 +972,7 @@ const EmpT=({emps,type})=>{const fe=fltEmps(emps);return <div style={C({borderRi
 {fe.length===0?<p style={{color:T.tm,textAlign:"center",padding:20}}>{srch?"لا نتائج":"لا يوجد"}</p>:<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:0}}>
 <thead><tr><th style={TH}>#</th><th style={TH}>الاسم</th><th style={TH}>{type==="salary"?"الراتب":"سعر الساعة"}</th>{type==="salary"&&<th style={TH}>ساعات/يوم</th>}{type==="salary"&&<th style={TH}>سعر الإضافي</th>}<th style={TH}>إجراءات</th></tr></thead>
 <tbody>{fe.map((e,i)=><tr key={e.id}><td style={TD}>{i+1}</td><td style={{...TD,fontWeight:700}}>{srch.trim()?<span dangerouslySetInnerHTML={{__html:e.name.replace(new RegExp(srch.trim(),"g"),"<mark style='background:"+T.og+"40;color:"+T.og+";border-radius:3px;padding:0 2px'>$&</mark>")}}/>:e.name}</td><td style={{...TD,fontWeight:600}}>{type==="salary"?e.baseSalary?.toLocaleString():e.hourlyRate} {cfg.currency}</td>{type==="salary"&&<td style={TD}>{e.hoursPerDay||8}</td>}{type==="salary"&&<td style={TD}>{e.overtimeRate&&e.overtimeRate>0?<span style={{color:T.og,fontWeight:700}}>✏️ {e.overtimeRate} {cfg.currency}/س</span>:<span style={{color:T.tm,fontSize:11}}>⚙️ تلقائي</span>}</td>}
-<td style={TD}><div style={{display:"flex",gap:8}}><button style={B(T.bk,false,"sm")} onClick={()=>setHistEmp(Object.assign({},e,{allowances:getActiveAllowances(e,fY,fM)}))} title="السجل التاريخي">📋</button>{e.type==="salary"&&<button style={B(T.ac,false,"sm")} onClick={()=>setAllowEmp(e)} title="البدلات">💰</button>}<button style={B(T.pr,false,"sm")} onClick={()=>{setFm({name:e.name,type:e.type,baseSalary:String(e.baseSalary||""),hourlyRate:String(e.hourlyRate||""),hoursPerDay:String(e.hoursPerDay||8),overtimeRate:String(e.overtimeRate||""),startDate:e.startDate||""});setEi(e.id);setSh(true)}}>✏️</button><button style={B(T.rd,false,"sm")} onClick={()=>{if(window.confirm("حذف "+e.name+"؟")){up(d=>{d.employees=d.employees.filter(x=>x.id!==e.id);d.attendance=d.attendance.filter(a=>a.employeeId!==e.id);d.transactions=d.transactions.filter(x=>x.employeeId!==e.id);d.payments=d.payments.filter(p=>p.employeeId!==e.id)});nt("تم")}}}>🗑️</button></div></td></tr>)}</tbody></table></div>}</div>};
+<td style={TD}><div style={{display:"flex",gap:8}}><button style={B(T.bk,false,"sm")} onClick={()=>setHistEmp(Object.assign({},e,{allowances:getActiveAllowances(e,fY,fM)}))} title="السجل التاريخي">📋</button>{e.type==="salary"&&<button style={B(T.ac,false,"sm")} onClick={()=>setAllowEmp(e)} title="البدلات">💰</button>}<button style={B(T.pr,false,"sm")} onClick={()=>{setFm({name:e.name,type:e.type,baseSalary:String(e.baseSalary||""),hourlyRate:String(e.hourlyRate||""),hoursPerDay:String(e.hoursPerDay||8),overtimeRate:String(e.overtimeRate||""),startDate:e.startDate||""});setEi(e.id);setSh(true)}}>✏️</button><button style={B(T.rd,false,"sm")} onClick={()=>{if(window.confirm("⚠️ أرشفة "+e.name+"؟\nسيتم نقله إلى الأرشيف مع الاحتفاظ بكل بياناته.\n(استخدم «حذف نهائي» من الأرشيف لإزالته نهائياً)")){up(d=>{if(!d.archivedEmployees)d.archivedEmployees=[];d.archivedEmployees.push({...e,_archivedAt:new Date().toISOString()});d.employees=d.employees.filter(x=>x.id!==e.id)});addLog("أرشفة موظف",e.name);nt("تم أرشفة "+e.name+" 📦")}}}>📦</button></div></td></tr>)}</tbody></table></div>}</div>};
 return <div>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:10}}>
 <div><h1 style={{fontSize:26,fontWeight:800,marginBottom:6}}>الموظفون</h1></div>
@@ -1949,6 +1951,25 @@ return <tr key={a.id}>
 <tr style={{background:T.pr+"08"}}><td colSpan={3} style={{...TD,fontWeight:800,color:T.tm}}>الإجمالي ({sorted.length} شهر)</td><td style={{...TD,fontWeight:800}}>{rn(totalArch,0).toLocaleString()}</td><td style={{...TD,fontWeight:700,color:T.gn}}>{rn(sorted.reduce((s,a)=>s+(a.totalPaid||0),0),0).toLocaleString()}</td><td style={{...TD,fontWeight:700,color:T.og}}>{rn(sorted.reduce((s,a)=>s+(a.totalRem||0),0),0).toLocaleString()}</td><td colSpan={2}/></tr>
 </tbody></table></div>
 </div>}
+
+{/* ── الموظفون المؤرشفون ── */}
+{(data.archivedEmployees||[]).length>0&&<div style={{...C(),marginTop:20}}>
+<h3 style={{fontSize:17,fontWeight:700,marginBottom:14}}>👥 الموظفون المؤرشفون</h3>
+<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:0}}>
+<thead><tr><th style={TH}>الاسم</th><th style={TH}>النوع</th><th style={TH}>الراتب الأساسي</th><th style={TH}>تاريخ الأرشفة</th><th style={TH}>إجراءات</th></tr></thead>
+<tbody>{(data.archivedEmployees||[]).map(e=><tr key={e.id}>
+<td style={{...TD,fontWeight:700}}>{e.name}</td>
+<td style={TD}>{e.type==="salary"?"💼 راتب":"⏰ ساعة"}</td>
+<td style={TD}>{e.baseSalary?(e.baseSalary.toLocaleString()+" "+cfg.currency):e.hourlyRate?(e.hourlyRate+" "+cfg.currency+"/س"):"—"}</td>
+<td style={{...TD,fontSize:12,color:T.tm}}>{e._archivedAt?fd(e._archivedAt.slice(0,10)):"—"}</td>
+<td style={TD}><div style={{display:"flex",gap:6}}>
+<button style={B(T.gn,false,"sm")} title="استعادة الموظف" onClick={()=>{if(window.confirm("استعادة "+e.name+" كموظف نشط؟")){up(d=>{if(!d.employees)d.employees=[];var restored={...e};delete restored._archivedAt;d.employees.push(restored);d.archivedEmployees=d.archivedEmployees.filter(x=>x.id!==e.id)});addLog("استعادة موظف",e.name);nt("تم استعادة "+e.name+" ✅")}}}>↩️ استعادة</button>
+<button style={B(T.rd,true,"sm")} title="حذف نهائي" onClick={()=>{if(window.confirm("⚠️ حذف "+e.name+" نهائياً مع كل بياناته؟\nهذا الإجراء لا يمكن التراجع عنه!")){up(d=>{d.archivedEmployees=d.archivedEmployees.filter(x=>x.id!==e.id);d.attendance=d.attendance.filter(a=>a.employeeId!==e.id);d.transactions=d.transactions.filter(x=>x.employeeId!==e.id);d.payments=d.payments.filter(p=>p.employeeId!==e.id)});addLog("حذف نهائي موظف",e.name);nt("تم الحذف النهائي","err")}}}>🗑️ حذف نهائي</button>
+</div></td>
+</tr>)}</tbody>
+</table></div>
+</div>}
+
 </div>};
 
 // ═══ SETTINGS — Enhanced ═══
@@ -1999,12 +2020,16 @@ const fbFields=[["apiKey","API Key"],["authDomain","Auth Domain"],["databaseURL"
 return <div style={{...C(),border:"2px solid "+(fbStatus==="connected"?T.gn:T.bd)}}>
 <h3 style={{fontSize:17,fontWeight:700,marginBottom:6}}>🔥 Firebase — المزامنة الأونلاين</h3>
 <p style={{fontSize:12,color:T.tm,marginBottom:16}}>يتيح لمستخدمين العمل معاً على نفس البيانات في الوقت الفعلي</p>
-<div style={{background:fbStatus==="connected"?T.gn+"15":T.sf,borderRadius:10,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+<div style={{background:fbStatus==="connected"?T.gn+"15":T.sf,borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
 <div style={{width:12,height:12,borderRadius:"50%",background:fbStatus==="connected"?T.gn:fbStatus==="connecting"?T.og:T.tm,flexShrink:0}}/>
 <span style={{fontSize:13,fontWeight:700,color:fbStatus==="connected"?T.gn:fbStatus==="connecting"?T.og:T.tx}}>
 {fbStatus==="connected"?"✅ متصل بـ Firebase":fbStatus==="connecting"?"⏳ جاري الاتصال...":fbStatus.startsWith("error")?"❌ خطأ: "+fbStatus.slice(6):fbStatus==="offline"?"📴 غير متصل بالإنترنت":"⚙️ لم يُفعَّل بعد"}
 </span>
 </div>
+{data._updatedBy&&<div style={{background:T.sf,borderRadius:8,padding:"6px 12px",marginBottom:16,fontSize:12,color:T.tm}}>
+🖊️ آخر تحديث بواسطة: <b style={{color:T.pr}}>{data._updatedBy}</b>
+{data._updatedAt&&<span style={{marginRight:6,opacity:0.7}}>{new Date(data._updatedAt).toLocaleString("ar")}</span>}
+</div>}
 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
 {fbFields.map(([k,lb])=><div key={k}><label style={L}>{lb}</label><input style={I} value={lFbCfg[k]||""} onChange={function(e){setLFbCfg(function(p){var n={...p};n[k]=e.target.value;return n})}} placeholder={k}/></div>)}
 </div>
@@ -2039,6 +2064,7 @@ return <div style={{...C(),border:"2px solid "+(fbStatus==="connected"?T.gn:T.bd
 {/* System config */}
 <div style={C()}>
 <h3 style={{fontSize:17,fontWeight:700,marginBottom:18}}>⚙️ إعدادات النظام</h3>
+<div style={{marginBottom:16}}><label style={L}>👤 اسم المستخدم (يظهر في Firebase عند التعديل)</label><input style={I} value={localStorage.getItem("payroll_username")||""} onChange={e=>{try{localStorage.setItem("payroll_username",e.target.value)}catch{}}} placeholder="مثال: أحمد" onBlur={e=>nt("تم حفظ اسم المستخدم: "+e.target.value)}/></div>
 <div style={{marginBottom:16}}><label style={L}>اسم الشركة</label><input style={I} value={cfg.companyName} onChange={e=>uCfg("companyName",e.target.value)}/></div>
 <div style={{marginBottom:16}}><label style={L}>العملة</label><input style={I} value={cfg.currency} onChange={e=>uCfg("currency",e.target.value)}/></div>
 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
