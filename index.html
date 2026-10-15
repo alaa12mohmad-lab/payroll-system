@@ -1,0 +1,2008 @@
+<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>نظام إدارة الرواتب v5</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Tajawal',sans-serif;direction:rtl}#root{min-height:100vh}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useCallback,useMemo,useRef}=React;
+const DB="payroll_v11";
+const THEMES={midnight:{name:"الأزرق الداكن",bg:"#060615",sf:"#0c0c28",cd:"#141440",bd:"#252565",pr:"#5b7cfa",pl:"#7d9aff",ac:"#00e5a0",rd:"#ff5068",og:"#ffb340",tx:"#e4e4f0",tm:"#8888b0",gn:"#2ee87a",bk:"#4fc3f7"},ocean:{name:"المحيط",bg:"#04111d",sf:"#0a1f35",cd:"#0f2a45",bd:"#1a3d5c",pr:"#1e90ff",pl:"#60b0ff",ac:"#00cec9",rd:"#e74c3c",og:"#f39c12",tx:"#ecf0f1",tm:"#7f8c9a",gn:"#2ecc71",bk:"#74b9ff"},emerald:{name:"الزمردي",bg:"#0a120a",sf:"#111e11",cd:"#182a18",bd:"#254025",pr:"#27ae60",pl:"#55d98a",ac:"#f1c40f",rd:"#e74c3c",og:"#e67e22",tx:"#e8f5e9",tm:"#81a981",gn:"#2ecc71",bk:"#00b894"},royal:{name:"الملكي",bg:"#120a1e",sf:"#1a1030",cd:"#251845",bd:"#3a2868",pr:"#9b59b6",pl:"#bb80d3",ac:"#f39c12",rd:"#e74c3c",og:"#e67e22",tx:"#f0e6ff",tm:"#9988bb",gn:"#2ecc71",bk:"#a29bfe"},light:{name:"فاتح",bg:"#f0f2f5",sf:"#ffffff",cd:"#ffffff",bd:"#e0e4ea",pr:"#2563eb",pl:"#3b82f6",ac:"#059669",rd:"#dc2626",og:"#d97706",tx:"#1f2937",tm:"#6b7280",gn:"#16a34a",bk:"#0284c7"},sunset:{name:"الغروب",bg:"#1a0a08",sf:"#2a1210",cd:"#3a1a15",bd:"#5a2a20",pr:"#e85d3a",pl:"#ff8c69",ac:"#ffd93d",rd:"#ff4040",og:"#ff9f43",tx:"#fff5ee",tm:"#c09080",gn:"#6bcb77",bk:"#ffc58b"},carbon:{name:"الكربوني",bg:"#0d0d0d",sf:"#1a1a1a",cd:"#222222",bd:"#3a3a3a",pr:"#10b981",pl:"#34d399",ac:"#f59e0b",rd:"#ef4444",og:"#f97316",tx:"#e5e5e5",tm:"#888888",gn:"#22c55e",bk:"#38bdf8"},cherry:{name:"الكرزي",bg:"#150810",sf:"#1e0e18",cd:"#2d1525",bd:"#4a2040",pr:"#ec4899",pl:"#f472b6",ac:"#8b5cf6",rd:"#f43f5e",og:"#fb923c",tx:"#fce7f3",tm:"#a0708a",gn:"#4ade80",bk:"#c084fc"},sand:{name:"رملي",bg:"#faf6f0",sf:"#fff8ef",cd:"#fff8ef",bd:"#e8dcc8",pr:"#92714a",pl:"#b0906a",ac:"#5a9a4a",rd:"#c44536",og:"#d4884a",tx:"#3d2b1f",tm:"#8a7a6a",gn:"#6a9a5a",bk:"#6a8caf"},navy:{name:"بحري",bg:"#0a1628",sf:"#0f1f3a",cd:"#152a4a",bd:"#1e3a60",pr:"#3a86c8",pl:"#5aa0e0",ac:"#e8a838",rd:"#e05555",og:"#e89030",tx:"#d0dae8",tm:"#6a80a0",gn:"#48b070",bk:"#58b8e8"}};
+const defCfg={companyName:"شركة الإدارة",daysPerMonth:30,overtimeMultiplier:1.5,currency:"ر.س",theme:"midnight",deliveryLocations:["المكتب الرئيسي"],defaultHoursPerDay:8,showAbsentColumn:true,enableBankTransfer:true,monthlyDays:{}};
+const defData={employees:[],projects:[],attendance:[],transactions:[],archives:[],payments:[],settings:{...defCfg}};
+function dbL(){try{const r=JSON.parse(localStorage.getItem(DB));if(r){["employees","projects","attendance","transactions","archives","payments","auditLog","templates"].forEach(k=>{if(!Array.isArray(r[k]))r[k]=[]});if(!r.settings)r.settings={...defCfg};if(!r.settings.deliveryLocations)r.settings.deliveryLocations=["المكتب الرئيسي"];if(!r.settings.monthlyDays)r.settings.monthlyDays={};return r}}catch{}return JSON.parse(JSON.stringify(defData))}
+function dbS(d){
+  try{
+    localStorage.setItem(DB,JSON.stringify(d));
+  }catch(e){
+    // إذا امتلأ localStorage — احذف النسخ الاحتياطية وحاول مجدداً
+    try{
+      Object.keys(localStorage).filter(k=>k.startsWith("payroll_bk_")).forEach(k=>localStorage.removeItem(k));
+      localStorage.setItem(DB,JSON.stringify(d));
+    }catch(e2){
+      // آخر محاولة — احذف كل شيء ليس البيانات الأساسية
+      try{
+        Object.keys(localStorage).filter(k=>k!==DB&&k!==CFG_KEY_GPS).forEach(k=>localStorage.removeItem(k));
+        localStorage.setItem(DB,JSON.stringify(d));
+      }catch(e3){}
+    }
+  }
+}
+function gid(){return"id_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8)}
+function fd(d){if(!d)return"";const[y,m,day]=d.split("-");return day+"/"+m+"/"+y}
+function mL(y,m){return["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"][(m||1)-1]+" "+y}
+function rn(n,d=2){return Math.round(n*10**d)/10**d}
+// ══════════════════════════════════════════════════════════
+// نظام أمان الاستيراد — الطبقات الخمس
+// ══════════════════════════════════════════════════════════
+function normName(s){if(!s)return"";return String(s).trim().replace(/\s+/g," ").replace(/[أإآ]/g,"ا").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/[\u064B-\u065F]/g,"")}
+function isFriday(d){return new Date(d).getDay()===5}
+
+// يجلب راتب/سعر الموظف الصالح لشهر معين
+function getEmpRate(emp,year,month){
+  if(!emp||!emp.rateHistory||!emp.rateHistory.length)return emp;
+  var key=String(year)+"-"+String(month).padStart(2,"0");
+  var hits=emp.rateHistory.filter(function(h){return h.from<=key}).sort(function(a,b){return b.from.localeCompare(a.from)});
+  if(!hits.length)return emp;
+  var h=hits[0];
+  return Object.assign({},emp,{
+    baseSalary:h.baseSalary!=null?h.baseSalary:emp.baseSalary,
+    hourlyRate:h.hourlyRate!=null?h.hourlyRate:emp.hourlyRate,
+    overtimeRate:h.overtimeRate!=null?h.overtimeRate:emp.overtimeRate,
+    hoursPerDay:h.hoursPerDay!=null?h.hoursPerDay:emp.hoursPerDay
+  });
+}
+function fuzzyFindInList(raw,list){
+  if(!raw||!list||!list.length)return null;
+  var norm=normName(raw);
+  var exact=list.find(function(e){return normName(e.name)===norm});
+  if(exact)return{emp:exact,score:100,type:"exact"};
+  var partial=list.find(function(e){var en=normName(e.name);return en.includes(norm)||norm.includes(en)||en.split(" ").some(function(w){return w.length>2&&norm.includes(w)})||norm.split(" ").some(function(w){return w.length>2&&en.includes(w)})});
+  if(partial)return{emp:partial,score:75,type:"partial"};
+  var best=null,bestScore=0;
+  list.forEach(function(e){var en=normName(e.name);if(Math.abs(en.length-norm.length)>4)return;var m2=0;for(var j=0;j<Math.min(en.length,norm.length);j++)if(en[j]===norm[j])m2++;var s2=Math.round((m2/Math.max(en.length,norm.length,1))*100);if(s2>60&&s2>bestScore){bestScore=s2;best=e}});
+  if(best)return{emp:best,score:bestScore,type:"fuzzy"};
+  return null;
+}
+function autoBackup(d,label){
+  try{
+    var key="payroll_bk_"+new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)+"_"+label;
+    var mini=JSON.stringify({ts:new Date().toISOString(),label:label,employees:d.employees,attendance:d.attendance,transactions:d.transactions,payments:d.payments});
+    localStorage.setItem(key,mini);
+    var keys=Object.keys(localStorage).filter(function(k){return k.startsWith("payroll_bk_")}).sort();
+    if(keys.length>10)keys.slice(0,keys.length-10).forEach(function(k){localStorage.removeItem(k)});
+    return key;
+  }catch(e2){return null}
+}
+
+// ══════════════════════════════════════════════════════════
+// Firebase Realtime Database — المزامنة الأونلاين
+// ══════════════════════════════════════════════════════════
+const FB_CFG_KEY="payroll_fb_config";
+let _fbApp=null,_fbDb=null,_fbRef=null,_fbWriteTimer=null,_fbIgnoreNext=false,_fbReady=false;
+function fbCfgLoad(){try{var r=localStorage.getItem(FB_CFG_KEY);return r?JSON.parse(r):null}catch{return null}}
+function fbCfgSave(c){try{localStorage.setItem(FB_CFG_KEY,JSON.stringify(c))}catch{}}
+function fbWrite(d){
+  if(!_fbRef||!_fbReady)return;
+  clearTimeout(_fbWriteTimer);
+  _fbWriteTimer=setTimeout(function(){
+    _fbIgnoreNext=true;
+    var clean=JSON.parse(JSON.stringify(d));
+    _fbRef.set(clean).catch(function(e){console.error("FB write:",e);_fbIgnoreNext=false});
+  },1500);
+}
+function fbDestroy(){
+  if(_fbRef){try{_fbRef.off()}catch{}_fbRef=null}
+  if(_fbApp){try{_fbApp.delete()}catch{}_fbApp=null}
+  _fbDb=null;_fbReady=false;
+}
+function fbInit(cfg,onData,onStatus){
+  fbDestroy();
+  if(!cfg||!cfg.databaseURL||!cfg.apiKey){onStatus&&onStatus("no_cfg");return}
+  try{
+    _fbApp=firebase.initializeApp(cfg,"payroll_"+Date.now());
+    _fbDb=firebase.database(_fbApp);
+    _fbRef=_fbDb.ref("payroll_v11");
+    onStatus&&onStatus("connecting");
+    _fbRef.on("value",function(snap){
+      if(_fbIgnoreNext){_fbIgnoreNext=false;return}
+      var val=snap.val();
+      _fbReady=true;
+      onStatus&&onStatus("connected");
+      if(val&&typeof val==="object"&&val.settings){
+        onData(val);
+      }
+    },function(err){
+      console.error("FB read:",err);
+      onStatus&&onStatus("error:"+err.message);
+    });
+    // Connection state monitor
+    _fbDb.ref(".info/connected").on("value",function(s){
+      if(!s.val())onStatus&&onStatus("offline");
+      else if(_fbReady)onStatus&&onStatus("connected");
+    });
+  }catch(e){
+    console.error("FB init:",e);
+    onStatus&&onStatus("error:"+e.message);
+  }
+}
+function listBackups(){
+  try{return Object.keys(localStorage).filter(function(k){return k.startsWith("payroll_bk_")}).sort().reverse().map(function(k){try{var d=JSON.parse(localStorage.getItem(k));return{key:k,ts:d.ts,label:d.label||"",empCount:(d.employees||[]).length,attCount:(d.attendance||[]).length}}catch(e2){return null}}).filter(Boolean)}catch(e2){return[]}
+}
+function analyzeRow(row,employees,projects,existingAtt,cfg){
+  var nameRaw=String(row[0]||"").trim();
+  var dateRaw=String(row[1]||"").trim();
+  var projRaw=String(row[2]||"").trim();
+  var statusRaw=String(row[3]||"حاضر").trim();
+  var otRaw=Number(row[4])||0;
+  var hrsRaw=Number(row[5])||0;
+  var issues=[],warns=[];
+  if(!nameRaw)return{ok:false,skip:true,nameRaw:nameRaw,dateRaw:dateRaw,projRaw:projRaw,issues:["اسم فارغ"],warns:[],cost:0,statusCode:"skip"};
+  var empMatch=fuzzyFindInList(nameRaw,employees);
+  if(!empMatch)return{ok:false,skip:false,nameRaw:nameRaw,dateRaw:dateRaw,projRaw:projRaw,issues:["موظف غير موجود: "+nameRaw],warns:[],cost:0,statusCode:"error"};
+  if(empMatch.type!=="exact")warns.push("اسم تقريبي ("+empMatch.score+"%) ← "+empMatch.emp.name);
+  if(!dateRaw||isNaN(new Date(dateRaw).getTime()))return{ok:false,skip:false,nameRaw:nameRaw,dateRaw:dateRaw,projRaw:projRaw,emp:empMatch.emp,issues:["تاريخ خاطئ: "+dateRaw],warns:warns,cost:0,statusCode:"error"};
+  if(new Date(dateRaw)>new Date())warns.push("تاريخ مستقبلي");
+  var projMatch=fuzzyFindInList(projRaw,projects);
+  if(!projMatch)return{ok:false,skip:false,nameRaw:nameRaw,dateRaw:dateRaw,projRaw:projRaw,emp:empMatch.emp,issues:["مشروع غير موجود: "+projRaw],warns:warns,cost:0,statusCode:"error"};
+  if(projMatch.type!=="exact")warns.push("مشروع تقريبي ("+projMatch.score+"%) ← "+projMatch.emp.name);
+  var isDup=existingAtt.some(function(a){return a.employeeId===empMatch.emp.id&&a.date===dateRaw});
+  if(isDup)return{ok:false,skip:false,dup:true,nameRaw:nameRaw,dateRaw:dateRaw,projRaw:projRaw,emp:empMatch.emp,proj:projMatch.emp,issues:[],warns:["مكرر — موجود مسبقاً"],cost:0,statusCode:"dup"};
+  var emp=empMatch.emp;
+  var isAbs=statusRaw==="غائب"||statusRaw==="absent";
+  var isFri=isFriday(dateRaw); // هل التاريخ يوم جمعة؟
+  var cost=0;
+  if(emp.type==="salary"){
+    var dr=(emp.baseSalary||0)/(cfg.daysPerMonth||30);
+    var hr2=dr/(emp.hoursPerDay||8);
+    var otH=emp.overtimeRate>0?emp.overtimeRate:rn(hr2*(cfg.overtimeMultiplier||1.5));
+    if(isAbs){
+      cost=0; // غائب — لا تكلفة
+    } else if(isFri){
+      // يوم الجمعة: كل ساعاته إضافية بدون حد أقصى
+      var friHrs=otRaw||hrsRaw||0; // الساعات في خانة الإضافي أو الساعات
+      if(friHrs===0)warns.push("🕌 الجمعة بـ0 ساعات — تأكد");
+      cost=rn(friHrs*otH);
+    } else {
+      // يوم عادي: تحقق من الإضافي
+      if(otRaw>(emp.hoursPerDay||8))issues.push("إضافي "+otRaw+"س > يوم "+(emp.hoursPerDay||8)+"س");
+      cost=rn(dr+otRaw*otH);
+    }
+  } else if(emp.type==="hourly"){
+    if(hrsRaw===0&&!isAbs)issues.push("ساعات=0 — لن يُحتسب راتب");
+    if(hrsRaw>16)warns.push("ساعات مرتفعة "+hrsRaw+"س");
+    cost=rn(hrsRaw*(emp.hourlyRate||0));
+  }
+  var statusCode=issues.length>0?"error":warns.length>0?"warn":"ok";
+  return{ok:statusCode==="ok"||statusCode==="warn",dup:false,skip:false,nameRaw:nameRaw,dateRaw:dateRaw,projRaw:projRaw,statusRaw:statusRaw,otRaw:otRaw,hrsRaw:hrsRaw,emp:empMatch.emp,proj:projMatch.emp,issues:issues,warns:warns,cost:cost,statusCode:statusCode};
+}
+
+// ══════════════════════════════════════════════
+// نظام التحقق من صحة ساعات العمل
+// ══════════════════════════════════════════════
+function attValidate(emp,date,status,overtime,hours,friHours,fM,fY,cfg){
+  const errs=[],warns=[];
+  if(!emp||!date)return{errs,warns};
+  const d=new Date(date);
+  const today=new Date();today.setHours(23,59,59,0);
+  const recM=d.getMonth()+1,recY=d.getFullYear();
+
+  // خطأ: تاريخ مستقبلي
+  if(d>today)errs.push("📅 التاريخ في المستقبل — تحقق من التاريخ");
+  // تحذير: خارج الشهر المحدد
+  if(recM!==fM||recY!==fY)warns.push("📅 التاريخ ("+recM+"/"+recY+") خارج الشهر المحدد ("+fM+"/"+fY+")");
+
+  if(emp.type==="salary"){
+    const ot=Number(overtime)||0;
+    const base=emp.hoursPerDay||8;
+    const dr=(emp.baseSalary||0)/(cfg.daysPerMonth||30);
+    const hr=dr/base;
+    const otHr=emp.overtimeRate&&emp.overtimeRate>0?emp.overtimeRate:rn(hr*(cfg.overtimeMultiplier||1.5));
+
+    // خطأ: إضافي يتجاوز ساعات اليوم كاملاً
+    if(ot>base*1.5)errs.push("⚡ إضافي ("+ot+"س) أكبر من ساعات يوم ونصف — خطأ مرجح");
+    // تحذير: إضافي كثير
+    else if(ot>base)warns.push("⚡ إضافي ("+ot+"س) يتجاوز ساعات اليوم ("+base+"س) — تأكد");
+    else if(ot>base*0.75)warns.push("⚡ إضافي مرتفع ("+ot+"س) — راجع");
+
+    // خطأ: يوم جمعة لكن غير مصنّف صحيح
+    if(isFriday(date)&&status!=="friday"&&status!=="fri_absent"&&status!=="absent")
+      errs.push("🕌 التاريخ يوم جمعة لكنه مسجّل كحضور عادي — يجب تصنيفه كجمعة");
+    // خطأ: مصنّف جمعة لكن التاريخ ليس جمعة
+    if(!isFriday(date)&&(status==="friday"||status==="fri_absent"))
+      errs.push("❌ الحالة مضبوطة على 'جمعة' لكن التاريخ ليس جمعة");
+
+    // ساعات الجمعة
+    if(status==="friday"){
+      const fh=Number(friHours)||0;
+      if(fh===0)warns.push("🕌 ساعات الجمعة = 0 — لن يُحتسب أي مبلغ");
+      if(fh>14)errs.push("🕌 ساعات الجمعة ("+fh+"س) مرتفعة جداً — تحقق");
+      else if(fh>base)warns.push("🕌 ساعات الجمعة ("+fh+"س) تتجاوز ساعات اليوم ("+base+"س)");
+    }
+    // تأثير مالي مرتفع جداً
+    const impact=status==="friday"?rn((Number(friHours)||base)*otHr):status==="present"?rn(dr+ot*otHr):0;
+    if(impact>emp.baseSalary*0.15)warns.push("💰 هذا السجل الواحد = "+rn(impact,0).toLocaleString()+" "+cfg.currency+" ("+rn((impact/emp.baseSalary)*100,0)+"% من الراتب)");
+  } else {
+    const h=Number(hours)||0;
+    // خطأ: صفر ساعات لموظف بالساعة
+    if(h===0)errs.push("⏰ ساعات = 0 — الموظف لن يحصل على أي مبلغ");
+    // خطأ: ساعات مفرطة
+    if(h>16)errs.push("⏰ "+h+" ساعة في يوم واحد — مستحيل عادةً، تحقق");
+    else if(h>12)warns.push("⏰ "+h+" ساعة في يوم واحد — كثير، راجع");
+    // تأثير مالي
+    const impact=rn(h*(emp.hourlyRate||0));
+    if(impact>(emp.hourlyRate||0)*16*1.5)warns.push("💰 تكلفة مرتفعة: "+impact.toLocaleString()+" "+cfg.currency);
+  }
+  return{errs,warns};
+}
+
+function attCost(emp,status,overtime,hours,friHours,cfg){
+  if(!emp)return 0;
+  if(emp.type==="salary"){
+    const dr=(emp.baseSalary||0)/(cfg.daysPerMonth||30);
+    const hr=dr/(emp.hoursPerDay||8);
+    const otHr=emp.overtimeRate&&emp.overtimeRate>0?emp.overtimeRate:rn(hr*(cfg.overtimeMultiplier||1.5));
+    if(status==="friday"||status==="fri_absent"){const fh=Number(friHours)||0;return rn(fh*otHr)}
+    if(status==="present"){const ot=Number(overtime)||0;return rn(dr+ot*otHr)}
+    return 0;
+  }
+  return rn((Number(hours)||0)*(emp.hourlyRate||0));
+}
+function dlExcel(data,headers,name){const ws=XLSX.utils.aoa_to_sheet([headers,...data]);ws['!cols']=headers.map(()=>({wch:22}));const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Sheet1");XLSX.writeFile(wb,name+".xlsx")}
+function rdExcel(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>{try{const wb=XLSX.read(e.target.result,{type:"array"});res(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1}))}catch(err){rej(err)}};r.onerror=rej;r.readAsArrayBuffer(file)})}
+function mkPDF(title,html,ls=false){const doc=`<!DOCTYPE html><html dir=rtl lang=ar><head><meta charset=utf-8><title>${title}</title><style>@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');*{margin:0;padding:0;box-sizing:border-box}body{font-family:Tajawal,sans-serif;direction:rtl;padding:25px;color:#1a1a2e;font-size:13px;line-height:1.6}.hdr{text-align:center;margin-bottom:22px;padding-bottom:14px;border-bottom:3px double #1a3a6a}.hdr h1{font-size:20px;color:#1a3a6a}.hdr .sub{color:#555;font-size:12px}.stit{font-size:14px;color:#1a3a6a;font-weight:700;margin-bottom:10px;padding:6px 12px;background:#e8edf5;border-right:4px solid #1a3a6a}table{width:100%;border-collapse:collapse;margin-bottom:12px}th{background:#1a3a6a;color:#fff;padding:8px;font-size:11px;text-align:right}td{padding:7px 8px;border-bottom:1px solid #dde;font-size:11px;text-align:right}tr:nth-child(even) td{background:#f4f6fa}.cds{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}.ic{flex:1;min-width:100px;background:#f0f3fa;border:1px solid #d0d8e8;border-radius:8px;padding:10px;text-align:center}.ic .l{font-size:10px;color:#666}.ic .v{font-size:15px;font-weight:700;color:#1a3a6a}.tr td{background:#1a3a6a!important;color:#fff!important;font-weight:700!important}.ft{text-align:center;margin-top:25px;padding-top:12px;border-top:2px solid #ddd;color:#999;font-size:10px}.sig{display:flex;justify-content:space-around;margin-top:40px}.sl{border-top:1px solid #333;margin-top:50px;padding-top:5px;font-size:11px;text-align:center}@page{size:${ls?'A4 landscape':'A4 portrait'};margin:10mm}</style></head><body>${html}<div class=ft>تم الإنشاء: ${new Date().toLocaleDateString("ar-EG",{year:"numeric",month:"long",day:"numeric"})}</div><script>window.onload=function(){setTimeout(function(){window.print()},500)}<\/script></body></html>`;try{const b=new Blob([doc],{type:"text/html;charset=utf-8"});const u=URL.createObjectURL(b);const w=window.open(u,"_blank");if(w)return}catch{}try{const w=window.open("","_blank","width=900,height=700");if(w){w.document.open();w.document.write(doc);w.document.close();return}}catch{}alert("السماح بالنوافذ المنبثقة مطلوب")}
+function getDataSize(data){const str=JSON.stringify(data);const bytes=new Blob([str]).size;if(bytes<1024)return bytes+" B";if(bytes<1048576)return(bytes/1024).toFixed(1)+" KB";return(bytes/1048576).toFixed(2)+" MB"}
+
+function EmpSearch({employees,value,onChange,placeholder}){
+const[open,setOpen]=useState(false);const[q,setQ]=useState("");const ref=useRef();
+const sel=employees.find(e=>e.id===value);
+useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};document.addEventListener("mousedown",h);return()=>document.removeEventListener("mousedown",h)},[]);
+const f=employees.filter(e=>!q||e.name.includes(q)||e.name.split(" ").some(w=>w.startsWith(q)));
+return(<div ref={ref} style={{position:"relative"}}><div onClick={()=>setOpen(!open)} style={{width:"100%",padding:"11px 14px",background:"inherit",border:"1.5px solid var(--bd,#252565)",borderRadius:10,color:"inherit",fontSize:14,cursor:"pointer",display:"flex",justifyContent:"space-between",fontFamily:"inherit"}}><span>{sel?sel.name:(placeholder||"اختر")}</span><span style={{fontSize:10}}>{open?"▲":"▼"}</span></div>
+{open&&<div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} style={{position:"absolute",top:"100%",right:0,left:0,zIndex:50,background:"var(--cd,#141440)",border:"1.5px solid var(--bd,#252565)",borderRadius:10,marginTop:4,boxShadow:"0 10px 30px rgba(0,0,0,0.4)",maxHeight:280,overflowY:"auto"}}>
+<div style={{padding:8,borderBottom:"1px solid var(--bd,#252565)"}}><input autoFocus value={q} onChange={e=>setQ(e.target.value)} onMouseDown={e=>e.stopPropagation()} placeholder="🔍 ابحث بالاسم..." style={{width:"100%",padding:"9px 12px",background:"transparent",border:"1px solid var(--bd,#252565)",borderRadius:8,color:"inherit",fontSize:13,outline:"none",fontFamily:"inherit",direction:"rtl"}}/></div>
+{value&&<div onClick={()=>{onChange("");setOpen(false);setQ("")}} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,opacity:0.6,borderBottom:"1px solid var(--bd)"}}>✕ إلغاء</div>}
+{f.filter(e=>e.type==="salary").length>0&&<div style={{padding:"5px 14px",fontSize:11,fontWeight:700,opacity:0.7,background:"rgba(91,124,250,0.1)"}}>💼 راتب</div>}
+{f.filter(e=>e.type==="salary").map(e=><div key={e.id} onClick={()=>{onChange(e.id);setOpen(false);setQ("")}} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,display:"flex",justifyContent:"space-between",borderBottom:"1px solid rgba(37,37,101,0.15)",background:value===e.id?"rgba(91,124,250,0.1)":"transparent"}}><span>{e.name}</span><span style={{fontSize:11,opacity:0.5}}>{e.baseSalary}</span></div>)}
+{f.filter(e=>e.type==="hourly").length>0&&<div style={{padding:"5px 14px",fontSize:11,fontWeight:700,opacity:0.7,background:"rgba(255,179,64,0.1)"}}>⏰ ساعة</div>}
+{f.filter(e=>e.type==="hourly").map(e=><div key={e.id} onClick={()=>{onChange(e.id);setOpen(false);setQ("")}} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,display:"flex",justifyContent:"space-between",borderBottom:"1px solid rgba(37,37,101,0.15)",background:value===e.id?"rgba(255,179,64,0.1)":"transparent"}}><span>{e.name}</span><span style={{fontSize:11,opacity:0.5}}>{e.hourlyRate}/س</span></div>)}
+{f.length===0&&<div style={{padding:20,textAlign:"center",opacity:0.5}}>لا نتائج</div>}
+</div>}</div>)}
+
+const NAV=[{id:"dash",ic:"📊",lb:"لوحة التحكم"},{id:"att",ic:"⏱️",lb:"ساعات العمل"},{id:"emp",ic:"👥",lb:"الموظفون"},{id:"proj",ic:"🏗️",lb:"المشاريع"},{id:"tx",ic:"💰",lb:"الحركات المالية"},{id:"pay",ic:"📋",lb:"كشف الرواتب"},{id:"pcost",ic:"📈",lb:"تكاليف المشاريع"},{id:"rpt",ic:"📄",lb:"التقارير"},{id:"arch",ic:"📦",lb:"الأرشيف"},{id:"log",ic:"📝",lb:"سجل التعديلات"},{id:"set",ic:"⚙️",lb:"الإعدادات"}];
+
+function App(){
+const[data,setData]=useState(dbL);const[pg,setPg]=useState("dash");const[toast,setToast]=useState(null);const[so,setSo]=useState(true);const[fbStatus,setFbStatus]=useState("no_cfg");const[fbCfgLocal,setFbCfgLocal]=useState(fbCfgLoad);
+const now=new Date();const[fM,setFM]=useState(now.getMonth()+1);const[fY,setFY]=useState(now.getFullYear());
+const cfg=data.settings||defCfg;const T=THEMES[cfg.theme]||THEMES.midnight;const isL=cfg.theme==="light"||cfg.theme==="sand";
+const dlocs=cfg.deliveryLocations||["المكتب الرئيسي"];
+// أيام الشهر المحدد — خاص بكل شهر على حدة
+const mKey=fY+"-"+fM;
+const mDays=(cfg.monthlyDays||{})[mKey]||cfg.daysPerMonth||30;
+const setMDays=v=>up(d=>{if(!d.settings.monthlyDays)d.settings.monthlyDays={};d.settings.monthlyDays[mKey]=Number(v)||30});
+useEffect(()=>{dbS(data)},[data]);
+// ضمان الحفظ عند إغلاق المتصفح
+useEffect(()=>{
+  const save=()=>dbS(data);
+  window.addEventListener("beforeunload",save);
+  window.addEventListener("pagehide",save);
+  return()=>{window.removeEventListener("beforeunload",save);window.removeEventListener("pagehide",save)};
+},[data]);
+useEffect(()=>{
+  var cfg=fbCfgLoad();
+  if(!cfg||!cfg.databaseURL){setFbStatus("no_cfg");return}
+  fbInit(cfg,function(remoteData){
+    setData(function(prev){
+      // only update if remote is newer (has more records or different ts)
+      var rTs=remoteData._ts||0;var lTs=prev._ts||0;
+      if(rTs>lTs||!prev._ts){
+        dbS(remoteData);
+        return remoteData;
+      }
+      return prev;
+    });
+  },function(st){setFbStatus(st)});
+  return function(){fbDestroy()};
+},[]);
+useEffect(()=>{if(toast){const t=setTimeout(()=>setToast(null),3500);return()=>clearTimeout(t)}},[toast]);
+const nt=(m,tp="ok")=>setToast({m,tp});
+// up: يحفظ البيانات مباشرة مع كل تعديل بدون انتظار useEffect
+const up=fn=>setData(p=>{const d=JSON.parse(JSON.stringify(p));fn(d);d._ts=Date.now();dbS(d);fbWrite(d);return d});
+const addLog=(act,det)=>up(d=>{if(!d.auditLog)d.auditLog=[];d.auditLog.unshift({id:gid(),action:act,details:det||'',date:new Date().toISOString()});if(d.auditLog.length>500)d.auditLog=d.auditLog.slice(0,500)});
+const I={width:"100%",padding:"11px 14px",background:T.sf,border:"1.5px solid "+T.bd,borderRadius:10,color:T.tx,fontSize:14,outline:"none",direction:"rtl",fontFamily:"inherit"};
+const L={display:"block",fontSize:12,color:T.tm,marginBottom:7,fontWeight:700};
+const B=(c=T.pr,o=false,s="md")=>({padding:s==="sm"?"6px 12px":s==="lg"?"13px 26px":"10px 20px",background:o?"transparent":c,color:o?c:"#fff",border:o?"1.5px solid "+c:"none",borderRadius:10,cursor:"pointer",fontSize:s==="sm"?12:13,fontWeight:700,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:7});
+const BG=(c)=>({display:"inline-block",padding:"4px 12px",borderRadius:20,fontSize:11,fontWeight:700,background:c+"18",color:c});
+const C=(x={})=>({background:T.cd,borderRadius:14,border:"1px solid "+T.bd,padding:22,marginBottom:18,...x});
+const ST=(c)=>({background:`linear-gradient(145deg,${c}1a,${c}08)`,border:"1.5px solid "+c+"35",borderRadius:14,padding:"20px 22px"});
+const TH={padding:"12px 14px",textAlign:"right",fontSize:12,fontWeight:700,color:T.tm,borderBottom:"2px solid "+T.bd,background:T.pr+"0a"};
+const TD={padding:"11px 14px",borderBottom:"1px solid "+T.bd+"18",fontSize:13};
+const MO={position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000};
+const MX={background:T.cd,borderRadius:18,border:"1.5px solid "+T.bd,padding:30,width:"92%",maxWidth:580,maxHeight:"88vh",overflowY:"auto"};
+const sB={display:"inline-flex",alignItems:"center",gap:5,padding:"5px 14px",borderRadius:10,fontSize:12,fontWeight:700,background:T.pr+"18",color:T.pl};
+const hB={display:"inline-flex",alignItems:"center",gap:5,padding:"5px 14px",borderRadius:10,fontSize:12,fontWeight:700,background:T.og+"18",color:T.og};
+
+const mA=useMemo(()=>data.attendance.filter(a=>{const[y,m]=a.date.split("-").map(Number);return y===fY&&m===fM}),[data.attendance,fM,fY]);
+const mT=useMemo(()=>data.transactions.filter(x=>{const[y,m]=x.date.split("-").map(Number);return y===fY&&m===fM}),[data.transactions,fM,fY]);
+const mP=useMemo(()=>data.payments.filter(p=>p.year===fY&&p.month===fM),[data.payments,fM,fY]);
+const isAr=useMemo(()=>data.archives.some(a=>a.year===fY&&a.month===fM),[data.archives,fY,fM]);
+
+const calc=useCallback(eid=>{
+const empRaw=data.employees.find(e=>e.id===eid);if(!empRaw)return null;
+const emp=getEmpRate(empRaw,fY,fM);
+const recs=mA.filter(a=>a.employeeId===eid);const txs=mT.filter(x=>x.employeeId===eid);const pr=mP.find(p=>p.employeeId===eid);
+const bon=txs.filter(x=>x.type==="bonus").reduce((s,x)=>s+x.amount,0);
+const ded=txs.filter(x=>x.type==="deduction").reduce((s,x)=>s+x.amount,0);
+const adv=txs.filter(x=>x.type==="advance").reduce((s,x)=>s+x.amount,0);
+const cP=pr?.cashPaid||0,bP=pr?.bankPaid||0,tP=cP+bP;
+const dLoc=pr?.deliveryLocation||"";
+if(emp.type==="salary"){
+const nonFriRecs=recs.filter(r=>r.status==="present");
+const friRecs=recs.filter(r=>r.status==="friday");
+const prs=nonFriRecs.length;
+const abs=recs.filter(r=>r.status==="absent").length;
+const friHrs=friRecs.reduce((s,r)=>s+(typeof r.friHours==="number"?r.friHours:Number(r.friHours)||0),0);
+const normOT=nonFriRecs.reduce((s,r)=>s+(r.overtime||0),0);
+const ot=normOT+friHrs;
+// استخدم الراتب المحفوظ وقت التسجيل إن وُجد (لمنع تأثير التغيير على الأشهر السابقة)
+const snap=recs.length>0&&recs[0]._snap?recs[0]._snap:null;
+const effSalary=snap?.baseSalary??emp.baseSalary;
+const effHPD=snap?.hoursPerDay??emp.hoursPerDay??8;
+const effOTRate=snap?.overtimeRate??emp.overtimeRate;
+// أيام الشهر — خاص بكل شهر على حدة
+const dr=effSalary/(mDays||30);
+const hr=dr/(effHPD||8);
+const otHr=effOTRate&&effOTRate>0?effOTRate:rn(hr*(cfg.overtimeMultiplier||1.5));
+const bp=rn(prs*dr);
+const op=rn(ot*otHr);
+const g=rn(bp+op+bon),n=rn(g-ded-adv),rem=rn(n-tP);
+const pD={};nonFriRecs.forEach(r=>{pD[r.projectId]=(pD[r.projectId]||0)+1});friRecs.forEach(r=>{pD[r.projectId]=(pD[r.projectId]||0)+1});
+const pC={};const totalPresent=prs+(friRecs.length)||1;Object.entries(pD).forEach(([p,d])=>{pC[p]=rn((d/totalPresent)*n)});
+return{emp,present:prs,absent:abs,totalOT:ot,normOT,fridayDays:friRecs.length,fridayHours:friHrs,basePay:bp,otPay:op,otHourlyRate:otHr,bonus:bon,deduction:ded,advance:adv,gross:g,net:n,cashPaid:cP,bankPaid:bP,totalPaid:tP,remaining:rem,deliveryLocation:dLoc,recs,pCosts:pC,pDays:pD,totalHours:0,pHours:{}}}
+else{const th=recs.reduce((s,r)=>s+(r.hours||0),0),bp=rn(th*(emp.hourlyRate||0)),g=rn(bp+bon),n=rn(g-ded-adv),rem=rn(n-tP);const pH={};recs.forEach(r=>{pH[r.projectId]=(pH[r.projectId]||0)+(r.hours||0)});const pC={};Object.entries(pH).forEach(([p,h])=>{pC[p]=rn((h/(th||1))*n)});return{emp,present:recs.length,absent:0,totalOT:0,fridayDays:0,basePay:bp,otPay:0,bonus:bon,deduction:ded,advance:adv,gross:g,net:n,cashPaid:cP,bankPaid:bP,totalPaid:tP,remaining:rem,deliveryLocation:dLoc,recs,pCosts:pC,pDays:{},totalHours:th,pHours:pH}}
+},[data.employees,mA,mT,mP,cfg,mDays]);
+
+const MF=()=><div style={{display:"flex",gap:10,alignItems:"center",marginBottom:22,flexWrap:"wrap"}}>
+<div style={{...sB,fontSize:14,padding:"9px 16px"}}>📅 {mL(fY,fM)}</div>
+<select style={{...I,width:140,padding:"9px"}} value={fM} onChange={e=>setFM(+e.target.value)}>{["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"].map((m,i)=><option key={i} value={i+1}>{m}</option>)}</select>
+<select style={{...I,width:110,padding:"9px"}} value={fY} onChange={e=>setFY(+e.target.value)}>{[2024,2025,2026,2027,2028].map(y=><option key={y} value={y}>{y}</option>)}</select>
+<div style={{display:"flex",alignItems:"center",gap:6,background:T.cd,border:"1.5px solid "+T.pr+"60",borderRadius:10,padding:"4px 10px"}}>
+<span style={{fontSize:12,color:T.tm,whiteSpace:"nowrap"}}>📆 أيام الشهر:</span>
+<input type="number" min="20" max="31" style={{width:52,padding:"4px 6px",background:"transparent",border:"none",color:T.pr,fontSize:14,fontWeight:800,outline:"none",fontFamily:"inherit",textAlign:"center"}} value={mDays} onChange={e=>setMDays(e.target.value)}/>
+<span style={{fontSize:11,color:T.tm}}>يوم</span>
+</div>
+<span style={{fontSize:11,color:T.tm}}>سعر اليوم: <b style={{color:T.ac}}>{rn((data.employees.find(e=>e.type==="salary")?.baseSalary||0)/mDays,1)}</b></span>
+</div>;
+const AW=()=>isAr?<div style={{background:T.og+"12",border:"1.5px solid "+T.og+"40",borderRadius:12,padding:"13px 18px",marginBottom:18,display:"flex",alignItems:"center",gap:12}}><span style={{fontSize:22}}>⚠️</span><span style={{fontSize:13,color:T.og,fontWeight:600}}>شهر مؤرشف</span></div>:null;
+
+// ═══ DASHBOARD ═══
+const Dash=()=>{const[dFilt,setDFilt]=useState("all"); // all, salary, hourly
+const[projFilt,setProjFilt]=useState("");
+let filtEmps=data.employees;if(dFilt!=="all")filtEmps=filtEmps.filter(e=>e.type===dFilt);
+let tN=0,tP=0,tOT=0,tBon=0,tDed=0,tAdv=0,tHrs=0,tDays=0,tAbsent=0;
+const empPayrolls=filtEmps.map(e=>{const p=calc(e.id);if(p){tN+=p.net;tP+=p.totalPaid;tOT+=p.totalOT;tBon+=p.bonus;tDed+=p.deduction;tAdv+=p.advance;tHrs+=p.totalHours;tDays+=p.present;tAbsent+=p.absent}return p}).filter(Boolean);
+// Project cost summary
+const projSum={};data.projects.forEach(p=>{projSum[p.id]={name:p.name,cost:0,emps:0}});
+empPayrolls.forEach(p=>{Object.entries(p.pCosts).forEach(([pid,cost])=>{if(projSum[pid]){projSum[pid].cost+=cost;projSum[pid].emps++}})});
+// Delivery location summary
+const locSum={};mP.forEach(p=>{if(p.deliveryLocation){const loc=p.deliveryLocation;if(!locSum[loc])locSum[loc]={c:0,t:0};locSum[loc].c++;const pc=calc(p.employeeId);if(pc)locSum[loc].t+=pc.net}});
+// Top 5 highest paid
+const topPaid=[...empPayrolls].sort((a,b)=>b.net-a.net).slice(0,5);
+
+return <div><h1 style={{fontSize:26,fontWeight:800,marginBottom:4}}>لوحة التحكم</h1><p style={{fontSize:13,color:T.tm,marginBottom:20}}>{cfg.companyName} — {mL(fY,fM)}</p><MF/>
+
+{/* Type filter */}
+<div style={{display:"flex",gap:8,marginBottom:20}}>
+{[{k:"all",l:"الكل ("+data.employees.length+")",c:T.pr},{k:"salary",l:"💼 راتب ("+data.employees.filter(e=>e.type==="salary").length+")",c:T.ac},{k:"hourly",l:"⏰ ساعة ("+data.employees.filter(e=>e.type==="hourly").length+")",c:T.og}].map(x=>
+<button key={x.k} style={B(x.c,dFilt!==x.k,"sm")} onClick={()=>setDFilt(x.k)}>{x.l}</button>
+)}
+</div>
+
+{/* Main stats */}
+<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12,marginBottom:20}}>
+{[{v:filtEmps.length,l:"الموظفين",c:T.pr,i:"👥"},{v:rn(tN,0).toLocaleString(),l:"إجمالي الرواتب",c:T.gn,i:"💰"},{v:rn(tP,0).toLocaleString(),l:"المدفوع",c:T.bk,i:"✅"},{v:rn(tN-tP,0).toLocaleString(),l:"المتبقي",c:tN-tP>0?T.og:T.gn,i:"⏳"},{v:tDays,l:"أيام الحضور",c:T.ac,i:"📅"},{v:tAbsent,l:"أيام الغياب",c:T.rd,i:"❌"},{v:tOT,l:"ساعات إضافية",c:T.og,i:"⚡"},{v:rn(tBon,0).toLocaleString(),l:"البونص",c:T.gn,i:"🎁"},{v:rn(tDed,0).toLocaleString(),l:"الخصومات",c:T.rd,i:"📉"},{v:rn(tAdv,0).toLocaleString(),l:"السلف",c:T.og,i:"💸"}].map((x,i)=>
+<div key={i} style={ST(x.c)}><div style={{fontSize:20,marginBottom:4}}>{x.i}</div><div style={{fontSize:18,fontWeight:800}}>{x.v}</div><div style={{fontSize:11,color:T.tm,marginTop:3}}>{x.l}</div></div>
+)}
+</div>
+
+{/* Two columns */}
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:18}}>
+{/* Project costs */}
+<div style={C()}><h3 style={{fontSize:15,fontWeight:700,marginBottom:14}}>🏗️ تكاليف المشاريع</h3>
+{Object.values(projSum).filter(p=>p.cost>0).sort((a,b)=>b.cost-a.cost).map((p,i)=>{
+const pct=tN>0?rn((p.cost/tN)*100,0):0;
+return <div key={i} style={{marginBottom:10}}>
+<div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:13}}>{p.name}</span><span style={{fontSize:13,fontWeight:700}}>{rn(p.cost,0).toLocaleString()} ({pct}%)</span></div>
+<div style={{height:8,background:T.sf,borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:T.pr,borderRadius:4}}/></div>
+</div>
+})}
+{Object.values(projSum).filter(p=>p.cost>0).length===0&&<p style={{color:T.tm,fontSize:13,textAlign:"center"}}>لا بيانات</p>}
+</div>
+
+{/* Top employees */}
+<div style={C()}><h3 style={{fontSize:15,fontWeight:700,marginBottom:14}}>🏆 أعلى 5 رواتب</h3>
+{topPaid.map((p,i)=>
+<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid "+T.bd+"18"}}>
+<div><span style={{fontSize:14,fontWeight:600}}>{i+1}. {p.emp.name}</span> <span style={BG(p.emp.type==="salary"?T.pr:T.og)}>{p.emp.type==="salary"?"💼":"⏰"}</span></div>
+<span style={{fontSize:14,fontWeight:700}}>{rn(p.net,0).toLocaleString()} {cfg.currency}</span>
+</div>
+)}
+{topPaid.length===0&&<p style={{color:T.tm,fontSize:13,textAlign:"center"}}>لا بيانات</p>}
+</div>
+</div>
+
+{/* Delivery locations */}
+{Object.keys(locSum).length>0&&<div style={C()}><h3 style={{fontSize:15,fontWeight:700,marginBottom:14}}>📍 مواقع التسليم</h3>
+<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>
+{Object.entries(locSum).map(([loc,info],i)=><div key={i} style={{...ST(T.bk),padding:"14px"}}><div style={{fontSize:12,color:T.tm}}>{loc}</div><div style={{fontSize:18,fontWeight:800}}>{rn(info.t,0).toLocaleString()}</div><div style={{fontSize:11,color:T.tm}}>{info.c} موظف</div></div>)}
+</div></div>}
+
+{/* Quick info bar */}
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+<div style={{...C(),padding:14,textAlign:"center"}}><div style={{fontSize:11,color:T.tm}}>💾 حجم البيانات</div><div style={{fontSize:16,fontWeight:700,marginTop:4}}>{getDataSize(data)}</div></div>
+<div style={{...C(),padding:14,textAlign:"center"}}><div style={{fontSize:11,color:T.tm}}>📊 سجلات الشهر</div><div style={{fontSize:16,fontWeight:700,marginTop:4}}>{mA.length}</div></div>
+<div style={{...C(),padding:14,textAlign:"center"}}><div style={{fontSize:11,color:T.tm}}>💰 حركات مالية</div><div style={{fontSize:16,fontWeight:700,marginTop:4}}>{mT.length}</div></div>
+</div>
+</div>};
+
+// ═══ ATTENDANCE ═══
+const Att=()=>{const[fE,setFE]=useState("");const[fD,setFD]=useState("");const[fP,setFP]=useState("");const[sh,setSh]=useState(false);
+const[fm,setFm]=useState({employeeId:"",date:"",projectId:"",status:"present",overtime:"0",hours:"0",friHours:""});const[ei,setEi]=useState(null);const[vt,setVt]=useState("all");const aRef=useRef();
+const[shBulk,setShBulk]=useState(false);const[bulkDate,setBulkDate]=useState("");const[bulkProj,setBulkProj]=useState("");const[bulkRows,setBulkRows]=useState([]);
+const[shCopy,setShCopy]=useState(false);const[copyFrom,setCopyFrom]=useState("");const[copyTo,setCopyTo]=useState("");const[sel,setSel]=useState([]);
+const[confData,setConfData]=useState(null);const[confChecked,setConfChecked]=useState(false);
+const[scanOpen,setScanOpen]=useState(false);const[bulkPreview,setBulkPreview]=useState(false);
+const[impPrev,setImpPrev]=useState(null);const[impMode,setImpMode]=useState("ok");const[bkOpen,setBkOpen]=useState(false);
+const attErrCount=useMemo(()=>mA.filter(r=>{const e2=data.employees.find(e=>e.id===r.employeeId);if(!e2)return false;return attValidate(e2,r.date,r.status,r.overtime,r.hours,r.friHours,fM,fY,cfg).errs.length>0}),[mA,data.employees,fM,fY,cfg]).length;
+const selE=data.employees.find(e=>e.id===fm.employeeId);
+const cls=()=>{setFm({employeeId:"",date:"",projectId:"",status:"present",overtime:"0",hours:"0",friHours:""});setEi(null);setSh(false)};
+const clsKeepFilter=()=>{setFm({employeeId:"",date:"",projectId:"",status:"present",overtime:"0",hours:"0",friHours:""});setEi(null);setSh(false)};
+const flt=mA.filter(a=>{if(fE&&a.employeeId!==fE)return false;if(fD&&a.date!==fD)return false;if(fP&&a.projectId!==fP)return false;if(vt!=="all"){const emp=data.employees.find(e=>e.id===a.employeeId);if(emp&&emp.type!==vt)return false}return true}).sort((a,b)=>b.date.localeCompare(a.date));
+const doSave=()=>{
+  if(!fm.employeeId||!fm.date||!fm.projectId){nt("ملء مطلوب","err");return}
+  const emp=data.employees.find(e=>e.id===fm.employeeId);
+  if(!emp){nt("موظف غير موجود","err");return}
+  if(data.attendance.find(a=>a.employeeId===fm.employeeId&&a.date===fm.date&&a.id!==ei)){nt("سجل موجود لهذا الموظف في هذا اليوم","err");return}
+  const isFri=isFriday(fm.date);
+  const{errs,warns}=attValidate(emp,fm.date,fm.status,fm.overtime,fm.hours,fm.friHours,fM,fY,cfg);
+  const cost=attCost(emp,isFri?(fm.status==="absent"?"fri_absent":"friday"):fm.status,fm.overtime,fm.hours,fm.friHours,cfg);
+  // إذا لا أخطاء ولا تحذيرات — حفظ مباشر
+  if(errs.length===0&&warns.length===0){doFinalSave();return}
+  // وإلا: أظهر نافذة التأكيد
+  setConfData({emp,date:fm.date,status:fm.status,isFri,errs,warns,cost});setConfChecked(false);
+};
+
+const doFinalSave=()=>{
+  const emp=data.employees.find(e=>e.id===fm.employeeId);if(!emp)return;
+  const isFri=isFriday(fm.date);
+  // حفظ لقطة الأسعار وقت التسجيل — لمنع تأثير تغيير الراتب على الأشهر السابقة
+  const rateSnap=emp.type==="salary"
+    ?{baseSalary:emp.baseSalary,overtimeRate:emp.overtimeRate,hoursPerDay:emp.hoursPerDay}
+    :{hourlyRate:emp.hourlyRate};
+  up(d=>{let r;if(emp.type==="salary"){if(isFri){const fh=fm.status==="absent"?-1:(fm.friHours===""?emp.hoursPerDay||8:Number(fm.friHours));r={id:ei||gid(),employeeId:fm.employeeId,date:fm.date,projectId:fm.projectId,status:fm.status==="absent"?"fri_absent":"friday",overtime:0,hours:0,baseHours:0,friHours:fh<0?0:fh,_snap:rateSnap}}else{r={id:ei||gid(),employeeId:fm.employeeId,date:fm.date,projectId:fm.projectId,status:fm.status,overtime:fm.status==="present"?Number(fm.overtime)||0:0,hours:emp.hoursPerDay||8,baseHours:emp.hoursPerDay||8,friHours:0,_snap:rateSnap}}}else{r={id:ei||gid(),employeeId:fm.employeeId,date:fm.date,projectId:fm.projectId,status:"present",overtime:0,hours:Number(fm.hours)||0,baseHours:0,friHours:0,_snap:rateSnap}}if(ei){const i=d.attendance.findIndex(a=>a.id===ei);if(i>=0)d.attendance[i]=r}else d.attendance.push(r)});
+  addLog(ei?"تعديل دوام":"إضافة دوام",emp.name+" — "+fd(fm.date));
+  nt(ei?"تم التحديث":"تم التسجيل");setConfData(null);clsKeepFilter();
+};
+// ─── مساعدات الواجهة ───
+const getRowWarn=(r,emp)=>{if(!emp||!r)return null;const ot=r.overtime||0;const base=emp.hoursPerDay||8;
+if(emp.type==="salary"){if(isFriday(r.date)&&r.status!=="friday"&&r.status!=="fri_absent")return"err";if(!isFriday(r.date)&&(r.status==="friday"||r.status==="fri_absent"))return"err";if(ot>base)return"err";if(ot>base*0.5)return"warn";return null}
+const h=r.hours||0;if(h===0)return"err";if(h>12)return"warn";return null};
+const liveCost=selE&&fm.date?attCost(selE,isFriday(fm.date)?(fm.status==="absent"?"fri_absent":"friday"):fm.status,fm.overtime,fm.hours,fm.friHours,cfg):0;
+const liveVal=selE&&fm.date?attValidate(selE,fm.date,fm.status,fm.overtime,fm.hours,fm.friHours,fM,fY,cfg):{errs:[],warns:[]};
+
+const dlTpl=()=>{
+const wb=XLSX.utils.book_new();
+// Main sheet
+const headers=["اسم الموظف","التاريخ (YYYY-MM-DD)","المشروع","الحالة (حاضر/غائب)","ساعات إضافية","عدد الساعات"];
+const sampleRows=data.employees.slice(0,2).map(e=>[e.name,"",data.projects[0]?.name||"","حاضر",0,e.type==="hourly"?8:0]);
+const wsData=[headers,...sampleRows];
+// Add empty rows for data entry
+for(let i=0;i<50;i++)wsData.push(["","","","حاضر",0,0]);
+const ws=XLSX.utils.aoa_to_sheet(wsData);
+ws['!cols']=[{wch:25},{wch:16},{wch:25},{wch:16},{wch:14},{wch:14}];
+// Add data validation for dropdowns
+const empNames=data.employees.map(e=>e.name).join(",");
+const projNames=data.projects.map(p=>p.name).join(",");
+if(!ws['!dataValidation'])ws['!dataValidation']=[];
+ws['!dataValidation'].push({sqref:"A2:A100",type:"list",formula1:'"'+empNames+'"'});
+ws['!dataValidation'].push({sqref:"C2:C100",type:"list",formula1:'"'+projNames+'"'});
+ws['!dataValidation'].push({sqref:"D2:D100",type:"list",formula1:'"حاضر,غائب"'});
+XLSX.utils.book_append_sheet(wb,ws,"الدوام");
+// Reference sheet with all names
+const refData=[["الموظفون","المشاريع"],...Array.from({length:Math.max(data.employees.length,data.projects.length)},(_,i)=>[data.employees[i]?.name||"",data.projects[i]?.name||""])];
+const wsRef=XLSX.utils.aoa_to_sheet(refData);
+wsRef['!cols']=[{wch:25},{wch:25}];
+XLSX.utils.book_append_sheet(wb,wsRef,"المرجع");
+XLSX.writeFile(wb,"قالب_الدوام.xlsx");nt("تم — القالب يحتوي على قوائم منسدلة")
+};
+const impAtt=async e=>{
+const f=e.target.files[0];if(!f)return;e.target.value="";
+try{
+const rows=await rdExcel(f);if(rows.length<2){nt("الملف فارغ","err");return}
+const analyzed=rows.slice(1).map(r=>analyzeRow(r,data.employees,data.projects,data.attendance,{...cfg,daysPerMonth:mDays}));
+const ok=analyzed.filter(r=>r.statusCode==="ok");
+const warn=analyzed.filter(r=>r.statusCode==="warn");
+const errs=analyzed.filter(r=>r.statusCode==="error");
+const dups=analyzed.filter(r=>r.statusCode==="dup");
+const skip=analyzed.filter(r=>r.statusCode==="skip");
+const totalCost=rn([...ok,...warn].reduce((s,r)=>s+(r.cost||0),0));
+const top3=[...ok,...warn].sort((a,b)=>(b.cost||0)-(a.cost||0)).slice(0,3);
+setImpPrev({rows:analyzed,ok,warn,errs,dups,skip,totalCost,top3,filename:f.name});
+setImpMode("ok");
+}catch(ex){nt("خطأ في القراءة: "+ex.message,"err")}
+};
+const doCommitImport=()=>{
+if(!impPrev)return;
+const bkKey=autoBackup(data,"import_"+impPrev.filename.replace(/[^a-z0-9]/gi,"_").slice(0,30));
+const toImport=impPrev.rows.filter(r=>impMode==="ok"?r.statusCode==="ok":r.statusCode==="ok"||r.statusCode==="warn");
+let cnt=0;
+up(d=>{
+toImport.forEach(r=>{
+if(!r.emp||!r.proj||!r.dateRaw)return;
+if(d.attendance.find(a=>a.employeeId===r.emp.id&&a.date===r.dateRaw))return;
+const isAbs=r.statusRaw==="غائب"||r.statusRaw==="absent";
+d.attendance.push((function(){
+  var recId=gid();
+  var isAbs2=r.statusRaw==="غائب"||r.statusRaw==="absent";
+  var isFri2=isFriday(r.dateRaw);
+  if(r.emp.type==="salary"){
+    if(isFri2){
+      // يوم الجمعة: نحفظ الساعات في friHours بحالة "friday"
+      var fh=isAbs2?0:(Number(r.otRaw)||Number(r.hrsRaw)||r.emp.hoursPerDay||8);
+      return{id:recId,employeeId:r.emp.id,date:r.dateRaw,projectId:r.proj.id,status:isAbs2?"fri_absent":"friday",overtime:0,hours:0,baseHours:0,friHours:fh};
+    }else{
+      return{id:recId,employeeId:r.emp.id,date:r.dateRaw,projectId:r.proj.id,status:isAbs2?"absent":"present",overtime:isAbs2?0:Number(r.otRaw)||0,hours:r.emp.hoursPerDay||8,baseHours:r.emp.hoursPerDay||8,friHours:0};
+    }
+  }else{
+    return{id:recId,employeeId:r.emp.id,date:r.dateRaw,projectId:r.proj.id,status:"present",overtime:0,hours:Number(r.hrsRaw)||0,baseHours:0,friHours:0};
+  }
+})());
+cnt++;
+});
+if(!d.auditLog)d.auditLog=[];
+d.auditLog.unshift({id:gid(),action:"استيراد Excel",details:"ملف: "+impPrev.filename+" | تم: "+cnt+" | أخطاء: "+impPrev.errs.length+" | مكرر: "+impPrev.dups.length+" | نسخة: "+(bkKey?"✅":"لا"),date:new Date().toISOString()});
+if(d.auditLog.length>500)d.auditLog=d.auditLog.slice(0,500);
+});
+nt("✅ تم استيراد "+cnt+" سجل"+(impPrev.dups.length?" (تخطي "+impPrev.dups.length+" مكرر)":""));
+setImpPrev(null);
+};
+
+return <div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22,flexWrap:"wrap",gap:10}}>
+<div><h1 style={{fontSize:26,fontWeight:800,marginBottom:6}}>ساعات العمل</h1></div>
+<div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+<button style={B(T.pr)} onClick={()=>{cls();setSh(true)}}>➕ فردي</button>
+<button style={B(T.ac)} onClick={()=>{setShBulk(true);setBulkDate("");setBulkProj("");setBulkRows([])}}>👥 جماعي</button>
+<button style={B(T.og,true,"sm")} onClick={()=>setShCopy(true)}>📋 نسخ يوم</button>
+<button style={B(T.ac,true,"sm")} onClick={dlTpl}>📥 قالب</button>
+<button style={B(T.og,true,"sm")} onClick={()=>aRef.current?.click()}>📤 رفع Excel</button>
+<input ref={aRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={impAtt}/>
+<button style={B(T.bk,true,"sm")} onClick={()=>setBkOpen(true)}>💾 النسخ</button>
+<button style={{...B(T.rd,true,"sm"),position:"relative"}} onClick={()=>setScanOpen(true)}>
+🔍 فحص
+{attErrCount>0&&<span style={{position:"absolute",top:-6,left:-6,background:T.rd,color:"#fff",borderRadius:"50%",minWidth:18,height:18,padding:"0 3px",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{attErrCount}</span>}
+</button>
+</div></div>
+<MF/><AW/>
+<div style={{display:"flex",gap:8,marginBottom:18}}>{[{k:"all",l:"الكل",c:T.pr},{k:"salary",l:"💼 راتب",c:T.ac},{k:"hourly",l:"⏰ ساعة",c:T.og}].map(x=><button key={x.k} style={B(x.c,vt!==x.k,"sm")} onClick={()=>setVt(x.k)}>{x.l}</button>)}</div>
+<div style={{display:"flex",gap:14,marginBottom:22,flexWrap:"wrap",alignItems:"flex-end"}}>
+<div style={{flex:"1 1 220px"}}><label style={L}>الموظف</label><EmpSearch employees={data.employees} value={fE} onChange={setFE} placeholder="بحث بالاسم..."/></div>
+<div style={{flex:"1 1 180px"}}><label style={L}>التاريخ</label><input type="date" style={I} value={fD} onChange={e=>setFD(e.target.value)}/></div>
+<div style={{flex:"1 1 180px"}}><label style={L}>المشروع</label><select style={I} value={fP} onChange={e=>setFP(e.target.value)}><option value="">— كل المشاريع —</option>{data.projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+{(fE||fD||fP)&&<button style={B(T.tm,true,"sm")} onClick={()=>{setFE("");setFD("");setFP("")}}>🔄 مسح الكل</button>}
+</div>
+<div style={C()}>{sel.length>0&&<div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14,padding:"10px 16px",background:T.rd+"10",border:"1px solid "+T.rd+"30",borderRadius:10}}>
+<span style={{fontSize:13,fontWeight:700}}>{sel.length} محدد</span>
+<button style={B(T.rd,false,"sm")} onClick={()=>{if(window.confirm("حذف "+sel.length+" سجل؟")){up(d=>{d.attendance=d.attendance.filter(a=>!sel.includes(a.id))});setSel([]);nt("تم حذف "+sel.length)}}}>🗑️ حذف المحدد</button>
+<button style={B(T.tm,true,"sm")} onClick={()=>setSel([])}>إلغاء التحديد</button>
+</div>}
+<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:0}}>
+<thead><tr><th style={{...TH,width:40}}><input type="checkbox" checked={flt.length>0&&sel.length===flt.length} onChange={e=>{if(e.target.checked)setSel(flt.map(r=>r.id));else setSel([])}}/></th>{["الموظف","النوع","التاريخ","المشروع","الحالة","ساعات","إضافي","إجراءات"].map(h=><th key={h} style={TH}>{h}</th>)}</tr></thead>
+<tbody>{flt.length===0?<tr><td colSpan={9} style={{...TD,textAlign:"center",color:T.tm,padding:50}}>📭 لا سجلات</td></tr>:
+flt.map(r=>{const emp=data.employees.find(e=>e.id===r.employeeId);const proj=data.projects.find(p=>p.id===r.projectId);const iS=emp?.type==="salary";
+const rowWarn=getRowWarn(r,emp);const rowBg=rowWarn==="err"?T.rd+"08":rowWarn==="warn"?T.og+"06":"transparent";
+return <tr key={r.id} style={{background:rowBg}}><td style={TD}><input type="checkbox" checked={sel.includes(r.id)} onChange={e=>{if(e.target.checked)setSel([...sel,r.id]);else setSel(sel.filter(x=>x!==r.id))}}/></td>
+<td style={{...TD,fontWeight:600}}>{rowWarn&&<span style={{fontSize:10,marginLeft:6,color:rowWarn==="err"?T.rd:T.og}}>{rowWarn==="err"?"🚫":"⚠️"}</span>}{emp?.name||"—"}</td><td style={TD}>{iS?<span style={sB}>💼</span>:<span style={hB}>⏰</span>}</td><td style={TD}>{fd(r.date)}</td><td style={TD}>{proj?.name||"—"}</td>
+<td style={TD}>{r.status==="friday"?<span style={BG(T.og)}>🕌 جمعة</span>:r.status==="fri_absent"?<span style={BG(T.rd)}>🕌 غائب</span>:r.status==="present"?<span style={BG(T.gn)}>حاضر</span>:<span style={BG(T.rd)}>غائب</span>}</td>
+<td style={TD}>{r.status==="friday"?<span style={{color:T.og,fontWeight:700}}>{r.friHours} س إضافي</span>:r.status==="fri_absent"?<span style={{color:T.rd}}>—</span>:iS?(r.status==="present"?(r.baseHours||emp?.hoursPerDay||8):0):(r.hours||0)}</td>
+<td style={TD}>{r.status==="friday"||r.status==="fri_absent"?"—":iS&&r.status==="present"?(r.overtime||0):"—"}</td>
+<td style={TD}><div style={{display:"flex",gap:8}}><button style={B(T.pr,false,"sm")} onClick={()=>{setFm({employeeId:r.employeeId,date:r.date,projectId:r.projectId,status:r.status||"present",overtime:String(r.overtime||0),hours:String(r.hours||0),friHours:String(r.friHours||"")});setEi(r.id);setSh(true)}}>✏️</button><button style={B(T.rd,false,"sm")} onClick={()=>{if(window.confirm("حذف؟")){up(d=>{d.attendance=d.attendance.filter(a=>a.id!==r.id)});addLog("حذف دوام",(emp||{}).name);nt("تم")}}}>🗑️</button></div></td></tr>})}</tbody>
+</table></div></div>
+{sh&&<div style={MO} onMouseDown={e=>{if(e.target===e.currentTarget)cls()}}><div style={MX} onMouseDown={e=>e.stopPropagation()}>
+<h3 style={{fontSize:20,fontWeight:800,marginBottom:22}}>{ei?"✏️ تعديل":"➕ تسجيل دوام"}</h3>
+<div style={{marginBottom:18}}><label style={L}>الموظف * (ابحث بالاسم)</label><EmpSearch employees={data.employees} value={fm.employeeId} onChange={v=>setFm({...fm,employeeId:v,status:"present",overtime:"0",hours:"0"})}/></div>
+{selE&&<div style={{...(selE.type==="salary"?sB:hB),marginBottom:18,fontSize:14,padding:"10px 18px"}}>{selE.type==="salary"?"💼 راتب: "+selE.baseSalary+" "+cfg.currency:"⏰ ساعة: "+selE.hourlyRate+" "+cfg.currency}</div>}
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+<div style={{marginBottom:18}}><label style={L}>التاريخ *</label><input type="date" style={I} value={fm.date} onChange={e=>setFm({...fm,date:e.target.value})}/></div>
+<div style={{marginBottom:18}}><label style={L}>المشروع *</label><select style={I} value={fm.projectId} onChange={e=>setFm({...fm,projectId:e.target.value})}><option value="">اختر</option>{data.projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div></div>
+{selE?.type==="salary"&&<div style={{background:T.pr+"08",border:"1px solid "+T.pr+"25",borderRadius:12,padding:18,marginBottom:18}}>
+<div style={{fontSize:14,fontWeight:700,marginBottom:14,color:T.pl}}>💼 موظف راتب</div>
+{fm.date&&isFriday(fm.date)?(<div>
+<div style={{background:T.og+"15",border:"1px solid "+T.og+"40",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>🕌</span><span style={{fontSize:13,color:T.og,fontWeight:700}}>يوم جمعة — يُحسب كساعات إضافية بالكامل (لا يُضاف للراتب الأساسي)</span></div>
+<div style={{display:"flex",gap:10,marginBottom:14}}>
+<button style={{...B(T.og,fm.status==="absent"),flex:1}} onClick={()=>setFm({...fm,status:"present"})}>🕌 عمل</button>
+<button style={{...B(T.rd,fm.status!=="absent"),flex:1}} onClick={()=>setFm({...fm,status:"absent"})}>❌ غائب</button>
+</div>
+{fm.status!=="absent"&&<div>
+<label style={{...L,color:T.og}}>⚡ عدد ساعات الجمعة</label>
+<input type="number" min="0" step="0.5" style={{...I,borderColor:T.og+"80",fontSize:16,fontWeight:700}} value={fm.friHours} onChange={e=>setFm({...fm,friHours:e.target.value})} placeholder={String(selE.hoursPerDay||8)}/>
+<p style={{fontSize:11,color:T.tm,marginTop:5}}>💡 كل هذه الساعات ستُحسب بسعر الساعة الإضافية — اكتب 0 إذا لم يعمل ساعات إضافية</p>
+</div>}
+{fm.status==="absent"&&<div style={{background:T.rd+"12",borderRadius:10,padding:14,fontSize:13,color:T.rd,textAlign:"center"}}>⚠️ لن تُحسب أي ساعات لهذا اليوم</div>}
+</div>):(<div>
+<div style={{marginBottom:14}}><div style={{display:"flex",gap:12}}><button style={{...B(T.gn,fm.status!=="present"),flex:1}} onClick={()=>setFm({...fm,status:"present",overtime:"0"})}>✅ حاضر</button><button style={{...B(T.rd,fm.status!=="absent"),flex:1}} onClick={()=>setFm({...fm,status:"absent",overtime:"0"})}>❌ غائب</button></div></div>
+{fm.status==="present"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div><label style={L}>الساعات</label><input type="number" style={{...I,opacity:0.6}} value={selE.hoursPerDay||8} readOnly/></div><div><label style={{...L,color:T.og}}>⚡ إضافي</label><input type="number" min="0" step="0.5" style={I} value={fm.overtime} onChange={e=>setFm({...fm,overtime:e.target.value})}/></div></div>}
+{fm.status==="absent"&&<div style={{background:T.rd+"12",borderRadius:10,padding:14,fontSize:13,color:T.rd,textAlign:"center"}}>⚠️ لن يحتسب راتب</div>}
+</div>)}
+</div>}
+{selE?.type==="hourly"&&<div style={{background:T.og+"08",border:"1px solid "+T.og+"25",borderRadius:12,padding:18,marginBottom:18}}>
+<div style={{fontSize:14,fontWeight:700,marginBottom:14,color:T.og}}>⏰ موظف ساعة</div>
+<input type="number" min="0" step="0.5" style={{...I,fontSize:18,fontWeight:700,textAlign:"center",padding:"14px"}} value={fm.hours} onChange={e=>setFm({...fm,hours:e.target.value})}/>
+<p style={{fontSize:12,color:T.tm,marginTop:6}}>💡 إجمالي مباشر — بدون فصل إضافي</p></div>}
+{/* ─── لوحة التحقق الحي ─── */}
+{selE&&fm.date&&(liveVal.errs.length>0||liveVal.warns.length>0||liveCost>0)&&<div style={{marginBottom:18,borderRadius:12,overflow:"hidden",border:"1.5px solid "+(liveVal.errs.length>0?T.rd:T.og)+"60"}}>
+{liveCost>0&&<div style={{background:T.pr+"12",padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+<span style={{fontSize:13,color:T.tm}}>💰 تكلفة هذا السجل</span>
+<span style={{fontSize:18,fontWeight:800,color:T.pr}}>{rn(liveCost,0).toLocaleString()} {cfg.currency}</span>
+</div>}
+{liveVal.errs.map((e,i)=><div key={"e"+i} style={{padding:"8px 16px",background:T.rd+"12",display:"flex",gap:8,alignItems:"flex-start",borderTop:"1px solid "+T.rd+"20"}}><span style={{color:T.rd,fontSize:14,flexShrink:0}}>🚫</span><span style={{fontSize:12,color:T.rd,fontWeight:600}}>{e}</span></div>)}
+{liveVal.warns.map((w,i)=><div key={"w"+i} style={{padding:"8px 16px",background:T.og+"12",display:"flex",gap:8,alignItems:"flex-start",borderTop:"1px solid "+T.og+"20"}}><span style={{color:T.og,fontSize:14,flexShrink:0}}>⚠️</span><span style={{fontSize:12,color:T.og}}>{w}</span></div>)}
+</div>}
+<div style={{display:"flex",gap:12,marginTop:22}}>
+<button style={{...B(liveVal.errs.length>0?T.og:T.pr,false,"lg"),position:"relative"}} onClick={doSave}>
+💾 {ei?"تحديث":"حفظ"}{liveVal.errs.length>0&&<span style={{marginRight:6,fontSize:11,background:"rgba(0,0,0,0.2)",borderRadius:6,padding:"2px 6px"}}>⚠️ يتطلب تأكيداً</span>}
+</button>
+<button style={B(T.tm,true)} onClick={cls}>إلغاء</button>
+</div>
+</div></div>}
+{shBulk&&<div style={MO} onClick={e=>{if(e.target===e.currentTarget)setShBulk(false)}}><div style={{...MX,maxWidth:780}}>
+<h3 style={{fontSize:20,fontWeight:800,marginBottom:22}}>👥 إدخال جماعي</h3>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+<div><label style={L}>التاريخ *</label><input type="date" style={I} value={bulkDate} onChange={e=>{const dt=e.target.value;setBulkDate(dt);setBulkRows(data.employees.map(emp=>({id:emp.id,name:emp.name,type:emp.type,status:"present",overtime:"0",hours:String(emp.hoursPerDay||8),friHours:"",ex:data.attendance.some(a=>a.employeeId===emp.id&&a.date===dt)})))}}/></div>
+<div><label style={L}>المشروع *</label><select style={I} value={bulkProj} onChange={e=>setBulkProj(e.target.value)}><option value="">اختر</option>{data.projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+</div>
+{bulkDate&&isFriday(bulkDate)&&<div style={{background:T.og+"15",border:"1px solid "+T.og+"40",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:13,color:T.og,fontWeight:600}}>⚠️ يوم جمعة — ساعات موظفي الراتب ستحسب كإضافي وليس حضور</div>}
+<div style={{display:"flex",gap:8,marginBottom:14}}>
+<button style={B(T.gn,true,"sm")} onClick={()=>setBulkRows(bulkRows.map(r=>({...r,status:"present"})))}>✅ حضور الكل</button>
+<button style={B(T.rd,true,"sm")} onClick={()=>setBulkRows(bulkRows.map(r=>({...r,status:"absent"})))}>❌ غياب الكل</button>
+</div>
+{bulkRows.length>0&&<div style={{maxHeight:340,overflowY:"auto"}}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:0}}>
+<thead><tr><th style={TH}>الموظف</th><th style={TH}>النوع</th>{!isFriday(bulkDate)&&<th style={TH}>الحالة</th>}<th style={TH}>{isFriday(bulkDate)?"🕌 ساعات الجمعة":"إضافي/ساعات"}</th><th style={TH}>✓</th></tr></thead>
+<tbody>{bulkRows.map((r,i)=><tr key={r.id} style={{opacity:r.ex?0.4:1}}>
+<td style={{...TD,fontWeight:600}}>{r.name}</td>
+<td style={TD}>{r.type==="salary"?<span style={sB}>💼</span>:<span style={hB}>⏰</span>}</td>
+{!isFriday(bulkDate)&&<td style={TD}>{r.ex?"—":r.type==="salary"?<div style={{display:"flex",gap:4}}><button style={B(T.gn,r.status!=="present","sm")} onClick={()=>{const n=[...bulkRows];n[i]={...n[i],status:"present"};setBulkRows(n)}}>✅</button><button style={B(T.rd,r.status!=="absent","sm")} onClick={()=>{const n=[...bulkRows];n[i]={...n[i],status:"absent"};setBulkRows(n)}}>❌</button></div>:"—"}</td>}
+<td style={TD}>{r.ex?"—":isFriday(bulkDate)&&r.type==="salary"?
+<div style={{display:"flex",gap:4,alignItems:"center"}}>
+{r.status!=="absent"&&<input type="number" min="0" step="0.5" style={{...I,width:70,padding:"5px 8px",borderColor:T.og+"80"}} value={r.friHours!==undefined&&r.friHours!==""?r.friHours:""} placeholder={String(r.hours||8)} onChange={e=>{const n=[...bulkRows];n[i]={...n[i],friHours:e.target.value};setBulkRows(n)}}/>}
+<button title={r.status==="absent"?"عمل":"غائب"} style={{...B(r.status==="absent"?T.rd:T.tm,r.status!=="absent","sm"),padding:"5px 8px",minWidth:36}} onClick={()=>{const n=[...bulkRows];n[i]={...n[i],status:r.status==="absent"?"present":"absent",friHours:""};setBulkRows(n)}}>{r.status==="absent"?"❌":"—"}</button>
+</div>
+:!isFriday(bulkDate)&&r.type==="salary"&&r.status==="present"?<input type="number" min="0" step="0.5" style={{...I,width:80,padding:"5px 8px"}} value={r.overtime} onChange={e=>{const n=[...bulkRows];n[i]={...n[i],overtime:e.target.value};setBulkRows(n)}}/>:r.type==="hourly"?<input type="number" min="0" step="0.5" style={{...I,width:80,padding:"5px 8px"}} value={r.hours} onChange={e=>{const n=[...bulkRows];n[i]={...n[i],hours:e.target.value};setBulkRows(n)}}/>:"—"}</td>
+<td style={TD}>{r.ex?<span style={BG(T.og)}>مسجل</span>:<span style={BG(T.gn)}>جديد</span>}</td>
+</tr>)}</tbody></table></div>}
+<div style={{display:"flex",gap:12,marginTop:18}}>
+<button style={B(T.pr,false,"lg")} onClick={()=>{if(!bulkDate||!bulkProj){nt("اختر التاريخ والمشروع","err");return}const isFri=isFriday(bulkDate);var cnt=0;up(d=>{bulkRows.forEach(r=>{if(r.ex)return;var emp2=d.employees.find(e=>e.id===r.id);if(!emp2)return;let rec;if(emp2.type==="salary"){if(isFri){const isAbs=r.status==="absent";const fh=isAbs?0:(r.friHours===""||r.friHours===undefined?emp2.hoursPerDay||8:Number(r.friHours));rec={id:gid(),employeeId:r.id,date:bulkDate,projectId:bulkProj,status:isAbs?"fri_absent":"friday",overtime:0,hours:0,baseHours:0,friHours:fh}}else{rec={id:gid(),employeeId:r.id,date:bulkDate,projectId:bulkProj,status:r.status,overtime:r.status==="present"?Number(r.overtime)||0:0,hours:emp2.hoursPerDay||8,baseHours:emp2.hoursPerDay||8,friHours:0}}}else{rec={id:gid(),employeeId:r.id,date:bulkDate,projectId:bulkProj,status:"present",overtime:0,hours:Number(r.hours)||0,baseHours:0,friHours:0}}d.attendance.push(rec);cnt++})});addLog("إدخال جماعي",cnt+" سجل - "+bulkDate+(isFri?" (جمعة)":""));nt("تم "+cnt+" سجل");setShBulk(false)}}>💾 حفظ</button>
+<button style={B(T.tm,true)} onClick={()=>setShBulk(false)}>إلغاء</button></div>
+</div></div>}
+{shCopy&&<div style={MO} onClick={e=>{if(e.target===e.currentTarget)setShCopy(false)}}><div style={MX}>
+<h3 style={{fontSize:20,fontWeight:800,marginBottom:22}}>📋 نسخ دوام يوم</h3>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+<div style={{marginBottom:18}}><label style={L}>من يوم (المصدر)</label><input type="date" style={I} value={copyFrom} onChange={e=>setCopyFrom(e.target.value)}/></div>
+<div style={{marginBottom:18}}><label style={L}>إلى يوم (الهدف)</label><input type="date" style={I} value={copyTo} onChange={e=>setCopyTo(e.target.value)}/></div></div>
+{copyFrom&&<p style={{fontSize:13,color:T.tm,marginBottom:16}}>سجلات المصدر: {data.attendance.filter(a=>a.date===copyFrom).length}</p>}
+<div style={{display:"flex",gap:12}}><button style={B(T.pr,false,"lg")} onClick={()=>{if(!copyFrom||!copyTo){nt("اختر اليومين","err");return}var fromRecs=data.attendance.filter(a=>a.date===copyFrom);if(!fromRecs.length){nt("لا سجلات","err");return}var cnt=0;up(d=>{fromRecs.forEach(r=>{if(!d.attendance.find(a=>a.employeeId===r.employeeId&&a.date===copyTo)){d.attendance.push(Object.assign({},r,{id:gid(),date:copyTo}));cnt++}})});addLog("نسخ دوام",copyFrom+" → "+copyTo+" ("+cnt+")");nt("تم نسخ "+cnt);setShCopy(false)}}>📋 نسخ</button><button style={B(T.tm,true)} onClick={()=>setShCopy(false)}>إلغاء</button></div>
+</div></div>}
+
+{/* ══════════════════════════════════════
+    نافذة تأكيد الحفظ — تظهر عند وجود أخطاء أو تحذيرات
+══════════════════════════════════════ */}
+{confData&&<div style={MO} onClick={e=>{if(e.target===e.currentTarget){setConfData(null);setConfChecked(false)}}}>
+<div style={{...MX,maxWidth:520,border:"2px solid "+(confData.errs.length>0?T.rd:T.og)}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+<span style={{fontSize:32}}>{confData.errs.length>0?"🚫":"⚠️"}</span>
+<div><h3 style={{fontSize:18,fontWeight:800,color:confData.errs.length>0?T.rd:T.og}}>{confData.errs.length>0?"تحذير: يوجد أخطاء":"مراجعة قبل الحفظ"}</h3>
+<p style={{fontSize:12,color:T.tm}}>{confData.emp.name} — {fd(confData.date)}</p></div>
+</div>
+
+{/* التكلفة */}
+{confData.cost>0&&<div style={{background:T.pr+"12",border:"1px solid "+T.pr+"30",borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+<span style={{fontSize:13,color:T.tm}}>💰 تكلفة هذا السجل على الشركة</span>
+<span style={{fontSize:20,fontWeight:800,color:T.pr}}>{rn(confData.cost,0).toLocaleString()} {cfg.currency}</span>
+</div>}
+
+{/* الأخطاء */}
+{confData.errs.length>0&&<div style={{marginBottom:14}}>
+<p style={{fontSize:12,fontWeight:700,color:T.rd,marginBottom:8}}>🚫 أخطاء يجب مراجعتها ({confData.errs.length}):</p>
+{confData.errs.map((e,i)=><div key={i} style={{padding:"8px 14px",background:T.rd+"12",border:"1px solid "+T.rd+"25",borderRadius:8,marginBottom:6,fontSize:13,color:T.rd}}>{e}</div>)}
+</div>}
+
+{/* التحذيرات */}
+{confData.warns.length>0&&<div style={{marginBottom:14}}>
+<p style={{fontSize:12,fontWeight:700,color:T.og,marginBottom:8}}>⚠️ تحذيرات ({confData.warns.length}):</p>
+{confData.warns.map((w,i)=><div key={i} style={{padding:"8px 14px",background:T.og+"12",border:"1px solid "+T.og+"25",borderRadius:8,marginBottom:6,fontSize:13,color:T.og}}>{w}</div>)}
+</div>}
+
+{/* تأكيد المسؤولية */}
+<div style={{background:T.rd+"08",border:"1.5px solid "+T.rd+"30",borderRadius:10,padding:14,marginBottom:18}}>
+<label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer"}}>
+<input type="checkbox" checked={confChecked} onChange={e=>setConfChecked(e.target.checked)} style={{marginTop:2,width:18,height:18,cursor:"pointer",accentColor:T.rd}}/>
+<span style={{fontSize:13,color:T.tx,lineHeight:1.6}}>
+<strong>أتحمل مسؤولية هذا الإدخال</strong> وقد راجعت البيانات أعلاه وأتأكد من صحتها
+</span>
+</label>
+</div>
+
+<div style={{display:"flex",gap:12}}>
+<button disabled={!confChecked} style={{...B(confData.errs.length>0?T.rd:T.og,false,"lg"),opacity:confChecked?1:0.4,cursor:confChecked?"pointer":"not-allowed"}} onClick={()=>{if(!confChecked)return;doFinalSave()}}>
+{confChecked?"💾 حفظ رغم التحذيرات":"☑️ يجب تأكيد المسؤولية أولاً"}
+</button>
+<button style={B(T.tm,true)} onClick={()=>{setConfData(null);setConfChecked(false)}}>🔙 تعديل</button>
+</div>
+</div></div>}
+
+{/* ══════════════════════════════════════
+    فاحص الأخطاء — مسح شامل للبيانات الحالية
+══════════════════════════════════════ */}
+{scanOpen&&<div style={MO} onClick={e=>{if(e.target===e.currentTarget)setScanOpen(false)}}>
+<div style={{...MX,maxWidth:720,maxHeight:"90vh"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+<div><h3 style={{fontSize:20,fontWeight:800}}>🔍 فاحص أخطاء الدوام</h3>
+<p style={{fontSize:12,color:T.tm}}>فحص شامل لجميع سجلات الشهر: {mL(fY,fM)}</p></div>
+<button style={B(T.tm,true,"sm")} onClick={()=>setScanOpen(false)}>✕ إغلاق</button>
+</div>
+{(()=>{
+const issues=[];
+mA.forEach(r=>{
+const emp=data.employees.find(e=>e.id===r.employeeId);if(!emp)return;
+const{errs,warns}=attValidate(emp,r.date,r.status,r.overtime,r.hours,r.friHours,fM,fY,cfg);
+const cost=attCost(emp,r.status,r.overtime,r.hours,r.friHours,cfg);
+if(errs.length>0||warns.length>0)issues.push({r,emp,errs,warns,cost});
+});
+// اكتشاف مكررات
+const seen={};mA.forEach(r=>{const k=r.employeeId+"_"+r.date;if(seen[k]){const emp=data.employees.find(e=>e.id===r.employeeId);issues.push({r,emp:emp||{name:"؟"},errs:["🔁 سجل مكرر — نفس الموظف ونفس التاريخ موجود مرتين"],warns:[],cost:0})}else seen[k]=true});
+// موظفين بدون أي سجل في الشهر
+const noRec=data.employees.filter(e=>!mA.some(a=>a.employeeId===e.id));
+
+const errCount=issues.filter(x=>x.errs.length>0).length;
+const warnCount=issues.filter(x=>x.errs.length===0&&x.warns.length>0).length;
+
+return <>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10,marginBottom:18}}>
+{[{v:mA.length,l:"سجلات الشهر",c:T.pr},{v:errCount,l:"🚫 أخطاء",c:T.rd},{v:warnCount,l:"⚠️ تحذيرات",c:T.og},{v:noRec.length,l:"⛔ بدون دوام",c:T.tm}].map((s,i)=><div key={i} style={{background:s.c+"12",border:"1px solid "+s.c+"30",borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
+<div style={{fontSize:22,fontWeight:800,color:s.c}}>{s.v}</div>
+<div style={{fontSize:11,color:T.tm,marginTop:3}}>{s.l}</div>
+</div>)}
+</div>
+
+{issues.length===0&&noRec.length===0
+?<div style={{textAlign:"center",padding:40,color:T.gn}}><div style={{fontSize:48}}>✅</div><div style={{fontSize:16,fontWeight:700,marginTop:12}}>لا أخطاء — البيانات سليمة!</div></div>
+:<div>
+{issues.length>0&&<div>
+<p style={{fontSize:13,fontWeight:700,marginBottom:12,color:T.rd}}>🚫 سجلات تحتاج مراجعة ({issues.length}):</p>
+<div style={{maxHeight:360,overflowY:"auto"}}>
+{issues.map((x,i)=><div key={i} style={{border:"1px solid "+(x.errs.length>0?T.rd:T.og)+"40",borderRadius:10,padding:"12px 14px",marginBottom:8,background:(x.errs.length>0?T.rd:T.og)+"08"}}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+<div><span style={{fontWeight:700,fontSize:14}}>{x.emp?.name||"؟"}</span><span style={{fontSize:12,color:T.tm,marginRight:8}}>{fd(x.r.date)}</span>{x.cost>0&&<span style={{fontSize:12,color:T.pr,fontWeight:600}}>({rn(x.cost,0).toLocaleString()} {cfg.currency})</span>}</div>
+<button style={B(T.pr,false,"sm")} onClick={()=>{setFm({employeeId:x.r.employeeId,date:x.r.date,projectId:x.r.projectId,status:x.r.status||"present",overtime:String(x.r.overtime||0),hours:String(x.r.hours||0),friHours:String(x.r.friHours||"")});setEi(x.r.id);setSh(true);setScanOpen(false)}}>✏️ تصحيح</button>
+</div>
+{x.errs.map((e,j)=><div key={"e"+j} style={{fontSize:12,color:T.rd,marginBottom:3}}>🚫 {e}</div>)}
+{x.warns.map((w,j)=><div key={"w"+j} style={{fontSize:12,color:T.og,marginBottom:3}}>⚠️ {w}</div>)}
+</div>)}
+</div></div>}
+
+{noRec.length>0&&<div style={{marginTop:14}}>
+<p style={{fontSize:13,fontWeight:700,marginBottom:10,color:T.tm}}>⛔ موظفون بدون أي سجل دوام هذا الشهر ({noRec.length}):</p>
+<div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+{noRec.map(e=><span key={e.id} style={{padding:"5px 12px",borderRadius:20,background:T.tm+"15",fontSize:12,color:T.tm}}>{e.name} ({e.type==="salary"?"راتب":"ساعة"})</span>)}
+</div></div>}
+</div>}
+</>;
+})()}
+</div></div>}
+
+{/* ═══ نافذة معاينة الاستيراد ═══ */}
+{impPrev&&<div style={MO} onClick={e=>{if(e.target===e.currentTarget){if(window.confirm("إلغاء؟"))setImpPrev(null)}}}>
+<div style={{...MX,maxWidth:820,maxHeight:"92vh"}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+<div><h3 style={{fontSize:18,fontWeight:800}}>🔍 معاينة الاستيراد — {impPrev.filename}</h3>
+<p style={{fontSize:12,color:T.tm}}>{impPrev.rows.length} صف</p></div>
+<button style={B(T.rd,true,"sm")} onClick={()=>setImpPrev(null)}>✕</button>
+</div>
+<div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8,marginBottom:14}}>
+{[{v:impPrev.ok.length,l:"✅ جاهز",c:T.gn},{v:impPrev.warn.length,l:"⚠️ تحذير",c:T.og},{v:impPrev.errs.length,l:"🚫 خطأ",c:T.rd},{v:impPrev.dups.length,l:"🔁 مكرر",c:T.tm},{v:impPrev.skip.length,l:"⏭️ فارغ",c:T.bd}].map((s,ix)=>(
+<div key={ix} style={{background:s.c+"18",border:"1px solid "+s.c+"30",borderRadius:10,padding:"10px 6px",textAlign:"center"}}>
+<div style={{fontSize:20,fontWeight:800,color:s.c}}>{s.v}</div>
+<div style={{fontSize:11,color:T.tm}}>{s.l}</div>
+</div>
+))}
+</div>
+<div style={{background:T.pr+"10",border:"1px solid "+T.pr+"30",borderRadius:10,padding:"12px 16px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+<div><div style={{fontSize:13,fontWeight:700,color:T.pr}}>💰 التأثير المالي الإجمالي</div>
+{impPrev.top3.length>0&&<div style={{fontSize:11,color:T.tm,marginTop:4}}>أعلى: {impPrev.top3.map(r=>r.emp&&r.emp.name+"("+rn(r.cost,0).toLocaleString()+")").join(" | ")}</div>}
+</div>
+<div style={{fontSize:24,fontWeight:800,color:T.pr}}>{impPrev.totalCost.toLocaleString()} {cfg.currency}</div>
+</div>
+<div style={{maxHeight:240,overflowY:"auto",marginBottom:14,border:"1px solid "+T.bd,borderRadius:10}}>
+<table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,fontSize:11}}>
+<thead style={{position:"sticky",top:0}}><tr style={{background:T.cd}}>
+{["#","الاسم","مطابق","التاريخ","المشروع","حالة","التكلفة","ملاحظة"].map(h=><th key={h} style={{...TH,fontSize:10,padding:"8px 6px"}}>{h}</th>)}
+</tr></thead>
+<tbody>{impPrev.rows.map((r,ix)=>{
+var rowBg=r.statusCode==="ok"?T.gn+"06":r.statusCode==="warn"?T.og+"08":r.statusCode==="dup"?T.tm+"06":T.rd+"08";
+var icon=r.statusCode==="ok"?"✅":r.statusCode==="warn"?"⚠️":r.statusCode==="dup"?"🔁":r.statusCode==="skip"?"⏭️":"🚫";
+return <tr key={ix} style={{background:rowBg}}>
+<td style={{...TD,fontSize:10,color:T.tm,padding:"6px"}}>{ix+1}</td>
+<td style={{...TD,fontSize:10,fontWeight:600,padding:"6px"}}>{r.nameRaw||"—"}</td>
+<td style={{...TD,fontSize:10,color:r.emp&&normName(r.nameRaw)!==normName(r.emp.name)?T.og:T.tx,padding:"6px"}}>{r.emp?r.emp.name:"—"}</td>
+<td style={{...TD,fontSize:10,padding:"6px"}}>{r.dateRaw||"—"}</td>
+<td style={{...TD,fontSize:10,padding:"6px"}}>{r.proj?r.proj.name:r.projRaw||"—"}</td>
+<td style={{...TD,textAlign:"center",padding:"6px"}}>{icon}</td>
+<td style={{...TD,fontSize:10,fontWeight:700,color:T.pr,padding:"6px"}}>{r.cost>0?rn(r.cost,0).toLocaleString():"—"}</td>
+<td style={{...TD,fontSize:10,color:T.tm,padding:"6px",maxWidth:160}}>{[...(r.issues||[]),...(r.warns||[])].join(" | ")||"—"}</td>
+</tr>})}
+</tbody>
+</table>
+</div>
+<div style={{background:T.sf,borderRadius:10,padding:12,marginBottom:14}}>
+<p style={{fontSize:12,fontWeight:700,marginBottom:8}}>🎯 ما الذي تريد استيراده؟</p>
+<div style={{display:"flex",gap:8}}>
+<div onClick={()=>setImpMode("ok")} style={{flex:1,padding:"10px 12px",border:"1.5px solid "+(impMode==="ok"?T.gn:T.bd),borderRadius:10,cursor:"pointer",background:impMode==="ok"?T.gn+"10":"transparent"}}>
+<div style={{fontWeight:700,fontSize:13}}>✅ الجاهز فقط</div>
+<div style={{fontSize:11,color:T.tm}}>{impPrev.ok.length} صف بدون أخطاء</div>
+{impMode==="ok"&&<span style={{color:T.gn}}>✓ محدد</span>}
+</div>
+<div onClick={()=>setImpMode("all")} style={{flex:1,padding:"10px 12px",border:"1.5px solid "+(impMode==="all"?T.og:T.bd),borderRadius:10,cursor:"pointer",background:impMode==="all"?T.og+"10":"transparent"}}>
+<div style={{fontWeight:700,fontSize:13}}>⚠️ الجاهز + التحذيرات</div>
+<div style={{fontSize:11,color:T.tm}}>{impPrev.ok.length+impPrev.warn.length} صف إجمالاً</div>
+{impMode==="all"&&<span style={{color:T.og}}>✓ محدد</span>}
+</div>
+</div>
+</div>
+<div style={{display:"flex",gap:10}}>
+<button style={{...B(impMode==="ok"?T.gn:T.og,false,"lg"),flex:1,justifyContent:"center"}} onClick={doCommitImport}>
+{"💾 استيراد "+(impMode==="ok"?impPrev.ok.length:impPrev.ok.length+impPrev.warn.length)+" سجل"}
+</button>
+<button style={B(T.tm,true)} onClick={()=>setImpPrev(null)}>إلغاء</button>
+</div>
+<p style={{fontSize:10,color:T.tm,marginTop:8,textAlign:"center"}}>🛡️ نسخة احتياطية تلقائية قبل الاستيراد</p>
+</div></div>}
+
+{/* ═══ نافذة النسخ الاحتياطية ═══ */}
+{bkOpen&&(()=>{
+var bks=listBackups();
+return <div style={MO} onClick={e=>{if(e.target===e.currentTarget)setBkOpen(false)}}>
+<div style={{...MX,maxWidth:580}} onClick={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+<div><h3 style={{fontSize:18,fontWeight:800}}>💾 النسخ الاحتياطية</h3>
+<p style={{fontSize:12,color:T.tm}}>آخر 10 نسخ تلقائية — يمكن الاستعادة في أي وقت</p></div>
+<button style={B(T.tm,true,"sm")} onClick={()=>setBkOpen(false)}>✕</button>
+</div>
+{bks.length===0
+?<div style={{textAlign:"center",padding:40,color:T.tm}}><div style={{fontSize:40}}>🗄️</div><p style={{marginTop:12}}>لا نسخ بعد — ستُنشأ تلقائياً قبل كل استيراد</p></div>
+:<div>{bks.map(function(bk){
+var dt=new Date(bk.ts).toLocaleString("ar-EG");
+var label=(bk.label||"").replace(/_/g," ");
+var doRestore=function(){
+if(!window.confirm("استعادة هذه النسخة؟"))return;
+var raw=localStorage.getItem(bk.key);
+if(!raw){nt("تعذّرت القراءة","err");return}
+var res=JSON.parse(raw);
+up(function(d){d.employees=res.employees||d.employees;d.attendance=res.attendance||d.attendance;d.transactions=res.transactions||d.transactions;d.payments=res.payments||d.payments});
+addLog("استعادة نسخة",label);nt("✅ تمت الاستعادة");setBkOpen(false);
+};
+return <div key={bk.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid "+T.bd+"20"}}>
+<div><div style={{fontWeight:700,fontSize:13}}>{label}</div>
+<div style={{fontSize:11,color:T.tm,marginTop:2}}>{dt} — {bk.empCount} موظف / {bk.attCount} سجل</div>
+</div>
+<button style={B(T.og,false,"sm")} onClick={doRestore}>⏪ استعادة</button>
+</div>;
+})}</div>}
+</div>
+</div>;
+})()}
+
+</div>
+
+};
+const Emp=()=>{const[sh,setSh]=useState(false);const[fm,setFm]=useState({name:"",type:"salary",baseSalary:"",hourlyRate:"",hoursPerDay:"8",overtimeRate:""});const[ei,setEi]=useState(null);const eRef=useRef();const[srch,setSrch]=useState("");
+const[rateModal,setRateModal]=useState(null);const[rateFrom,setRateFrom]=useState("current");const[rateCM,setRateCM]=useState(fM);const[rateCY,setRateCY]=useState(fY);
+const cls=()=>{setFm({name:"",type:"salary",baseSalary:"",hourlyRate:"",hoursPerDay:"8",overtimeRate:""});setEi(null);setSh(false);setRateModal(null)};
+
+// حفظ الموظف مع سجل السعر التاريخي
+const commitEmp=(snap)=>{
+up(d=>{const eD={id:ei||gid(),name:fm.name.trim(),type:fm.type,baseSalary:fm.type==="salary"?Number(fm.baseSalary)||0:0,hourlyRate:fm.type==="hourly"?Number(fm.hourlyRate)||0:0,hoursPerDay:fm.type==="salary"?Number(fm.hoursPerDay)||8:0,overtimeRate:fm.type==="salary"&&fm.overtimeRate?Number(fm.overtimeRate)||0:0};
+if(ei){const i=d.employees.findIndex(x=>x.id===ei);if(i>=0){const old=d.employees[i];eD.rateHistory=[...(old.rateHistory||[])];
+if(snap){// احفظ السعر القديم كنقطة أساسية أولى إن لم يكن موجوداً
+if(!eD.rateHistory.some(function(h){return h.from<snap.from})){eD.rateHistory.push({from:"2000-01",baseSalary:old.baseSalary||0,hourlyRate:old.hourlyRate||0,overtimeRate:old.overtimeRate||0,hoursPerDay:old.hoursPerDay||8})}
+eD.rateHistory=[...eD.rateHistory.filter(function(h){return h.from!==snap.from}),snap].sort(function(a,b){return b.from.localeCompare(a.from)});}
+d.employees[i]=eD;}}else{eD.rateHistory=[];d.employees.push(eD)}});
+addLog(ei?"تعديل موظف":"إضافة موظف",fm.name+(snap?" (سعر جديد من "+snap.from+")":""));nt(ei?"تم التحديث ✅":"تمت الإضافة ✅");cls()};
+
+const doSave=()=>{if(!fm.name.trim()){nt("أدخل الاسم","err");return}
+if(!ei){const normNew=normName(fm.name.trim());const dup=data.employees.find(e=>normName(e.name)===normNew);if(dup){nt("⚠️ الموظف \""+dup.name+"\" موجود مسبقاً","err");return}commitEmp(null);return}
+// تحقق من تغيير السعر
+const old=data.employees.find(e=>e.id===ei);
+const ns=fm.type==="salary"?Number(fm.baseSalary)||0:0,nh=fm.type==="hourly"?Number(fm.hourlyRate)||0:0,no=fm.type==="salary"&&fm.overtimeRate?Number(fm.overtimeRate)||0:0,np=fm.type==="salary"?Number(fm.hoursPerDay)||8:0;
+if(old&&(old.baseSalary!==ns||old.hourlyRate!==nh||old.overtimeRate!==no||old.hoursPerDay!==np)){
+  setRateModal({ns,nh,no,np});setRateFrom("current");setRateCM(fM);setRateCY(fY);
+}else{commitEmp(null)}};
+
+const confirmRate=()=>{if(!rateModal)return;const{ns,nh,no,np}=rateModal;
+if(rateFrom==="all"){commitEmp(null)}
+else{const from=rateFrom==="current"?String(fY)+"-"+String(fM).padStart(2,"0"):String(rateCY)+"-"+String(rateCM).padStart(2,"0");commitEmp({from,baseSalary:ns,hourlyRate:nh,overtimeRate:no,hoursPerDay:np})}};
+
+const dlTpl=()=>{
+const wb=XLSX.utils.book_new();
+const headers=["الاسم","النوع (salary/hourly)","الراتب الشهري","سعر الساعة","ساعات/يوم"];
+const sampleRows=[["أحمد محمد","salary","5000","0","8"],["خالد سعد","hourly","0","35","0"]];
+const wsData=[headers,...sampleRows];
+for(let i=0;i<50;i++)wsData.push(["","salary","","","8"]);
+const ws=XLSX.utils.aoa_to_sheet(wsData);
+ws['!cols']=[{wch:25},{wch:18},{wch:14},{wch:14},{wch:12}];
+if(!ws['!dataValidation'])ws['!dataValidation']=[];
+ws['!dataValidation'].push({sqref:"B2:B100",type:"list",formula1:'"salary,hourly"'});
+XLSX.utils.book_append_sheet(wb,ws,"الموظفون");
+XLSX.writeFile(wb,"قالب_موظفين.xlsx");nt("تم")};
+const impE=async e=>{const f=e.target.files[0];if(!f)return;e.target.value="";try{const rows=await rdExcel(f);if(rows.length<2){nt("فارغ","err");return}let c=0;up(d=>{rows.slice(1).forEach(r=>{const nm=String(r[0]||"").trim();if(!nm)return;d.employees.push({id:gid(),name:nm,type:String(r[1]||"salary").trim()==="hourly"?"hourly":"salary",baseSalary:Number(r[2])||0,hourlyRate:Number(r[3])||0,hoursPerDay:Number(r[4])||8});c++})});nt("تم "+c)}catch{nt("خطأ","err")}};
+const fltEmps=(emps)=>srch.trim()?emps.filter(e=>e.name.includes(srch.trim())):emps;
+const EmpT=({emps,type})=>{const fe=fltEmps(emps);return <div style={C({borderRight:"4px solid "+(type==="salary"?T.pr:T.og)})}><h3 style={{fontSize:16,fontWeight:700,marginBottom:16}}>{type==="salary"?"💼 راتب":"⏰ ساعة"} ({fe.length}{fe.length!==emps.length?"/"+emps.length:""})</h3>
+{fe.length===0?<p style={{color:T.tm,textAlign:"center",padding:20}}>{srch?"لا نتائج":"لا يوجد"}</p>:<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:0}}>
+<thead><tr><th style={TH}>#</th><th style={TH}>الاسم</th><th style={TH}>{type==="salary"?"الراتب":"سعر الساعة"}</th>{type==="salary"&&<th style={TH}>ساعات/يوم</th>}{type==="salary"&&<th style={TH}>سعر الإضافي</th>}<th style={TH}>إجراءات</th></tr></thead>
+<tbody>{fe.map((e,i)=><tr key={e.id}><td style={TD}>{i+1}</td><td style={{...TD,fontWeight:700}}>{srch.trim()?<span dangerouslySetInnerHTML={{__html:e.name.replace(new RegExp(srch.trim(),"g"),"<mark style='background:"+T.og+"40;color:"+T.og+";border-radius:3px;padding:0 2px'>$&</mark>")}}/>:e.name}</td><td style={{...TD,fontWeight:600}}>{type==="salary"?e.baseSalary?.toLocaleString():e.hourlyRate} {cfg.currency}</td>{type==="salary"&&<td style={TD}>{e.hoursPerDay||8}</td>}{type==="salary"&&<td style={TD}>{e.overtimeRate&&e.overtimeRate>0?<span style={{color:T.og,fontWeight:700}}>✏️ {e.overtimeRate} {cfg.currency}/س</span>:<span style={{color:T.tm,fontSize:11}}>⚙️ تلقائي</span>}</td>}
+<td style={TD}><div style={{display:"flex",gap:8}}><button style={B(T.pr,false,"sm")} onClick={()=>{setFm({name:e.name,type:e.type,baseSalary:String(e.baseSalary||""),hourlyRate:String(e.hourlyRate||""),hoursPerDay:String(e.hoursPerDay||8),overtimeRate:String(e.overtimeRate||"")});setEi(e.id);setSh(true)}}>✏️</button><button style={B(T.rd,false,"sm")} onClick={()=>{if(window.confirm("حذف "+e.name+"؟")){up(d=>{d.employees=d.employees.filter(x=>x.id!==e.id);d.attendance=d.attendance.filter(a=>a.employeeId!==e.id);d.transactions=d.transactions.filter(x=>x.employeeId!==e.id);d.payments=d.payments.filter(p=>p.employeeId!==e.id)});nt("تم")}}}>🗑️</button></div></td></tr>)}</tbody></table></div>}</div>};
+return <div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:10}}>
+<div><h1 style={{fontSize:26,fontWeight:800,marginBottom:6}}>الموظفون</h1></div>
+<div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button style={B(T.pr)} onClick={()=>{cls();setSh(true)}}>➕ إضافة</button><button style={B(T.ac,true,"sm")} onClick={dlTpl}>📥 قالب</button><button style={B(T.og,true,"sm")} onClick={()=>eRef.current?.click()}>📤 رفع</button><input ref={eRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={impE}/></div></div>
+<div style={{position:"relative",marginBottom:20}}>
+<span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",fontSize:16,pointerEvents:"none"}}>🔍</span>
+<input style={{...I,paddingRight:40,paddingLeft:srch?40:14}} value={srch} onChange={e=>setSrch(e.target.value)} placeholder="ابحث عن موظف بالاسم..."/>
+{srch&&<span onClick={()=>setSrch("")} style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",cursor:"pointer",fontSize:16,color:T.tm,lineHeight:1}}>✕</span>}
+</div>
+{srch.trim()&&<div style={{fontSize:13,color:T.tm,marginBottom:12}}>نتائج البحث عن "<strong style={{color:T.pl}}>{srch}</strong>": {data.employees.filter(e=>e.name.includes(srch.trim())).length} موظف</div>}
+<EmpT emps={data.employees.filter(e=>e.type==="salary")} type="salary"/>
+<EmpT emps={data.employees.filter(e=>e.type==="hourly")} type="hourly"/>
+{sh&&<div style={MO} onMouseDown={e=>{if(e.target===e.currentTarget)cls()}}><div style={MX} onMouseDown={e=>e.stopPropagation()}>
+<h3 style={{fontSize:20,fontWeight:800,marginBottom:22}}>{ei?"✏️":"➕"} موظف</h3>
+<div style={{marginBottom:18}}><label style={L}>الاسم *</label><input style={I} value={fm.name} onChange={e=>setFm({...fm,name:e.target.value})}/></div>
+<div style={{marginBottom:18}}><div style={{display:"flex",gap:12}}><button style={{...B(T.pr,fm.type!=="salary"),flex:1,padding:"14px"}} onClick={()=>setFm({...fm,type:"salary"})}>💼 راتب</button><button style={{...B(T.og,fm.type!=="hourly"),flex:1,padding:"14px"}} onClick={()=>setFm({...fm,type:"hourly"})}>⏰ ساعة</button></div></div>
+{fm.type==="salary"?<div style={{background:T.pr+"08",borderRadius:12,padding:18,marginBottom:18}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div><label style={L}>الراتب</label><input type="number" style={I} value={fm.baseSalary} onChange={e=>setFm({...fm,baseSalary:e.target.value})}/></div><div><label style={L}>ساعات/يوم</label><input type="number" style={I} value={fm.hoursPerDay} onChange={e=>setFm({...fm,hoursPerDay:e.target.value})}/></div></div><div style={{marginTop:14,paddingTop:14,borderTop:"1px solid "+T.bd+"40"}}><label style={{...L,color:T.og}}>⚡ سعر الساعة الإضافية (يدوي)</label><input type="number" step="0.01" style={{...I,borderColor:T.og+"60"}} value={fm.overtimeRate} onChange={e=>setFm({...fm,overtimeRate:e.target.value})} placeholder="اتركه فارغاً لاستخدام المعادلة التلقائية"/><p style={{fontSize:11,color:T.tm,marginTop:5}}>💡 إذا تُرك فارغاً سيُحسب تلقائياً: (الراتب ÷ أيام الشهر ÷ ساعات/يوم) × المضاعف — وإذا أُدخل يُطبّق مباشرةً على كل ساعة إضافية بما فيها الجمعة</p></div></div>
+:<div style={{background:T.og+"08",borderRadius:12,padding:18,marginBottom:18}}><label style={L}>سعر الساعة</label><input type="number" style={I} value={fm.hourlyRate} onChange={e=>setFm({...fm,hourlyRate:e.target.value})}/></div>}
+<div style={{display:"flex",gap:12,marginTop:22}}><button style={B(T.pr,false,"lg")} onClick={doSave}>💾 {ei?"تحديث":"إضافة"}</button><button style={B(T.tm,true)} onClick={cls}>إلغاء</button></div>
+</div></div>}
+
+{rateModal&&<div style={MO} onClick={e=>{if(e.target===e.currentTarget)setRateModal(null)}}>
+<div style={{...MX,maxWidth:440}} onClick={e=>e.stopPropagation()}>
+<h3 style={{fontSize:18,fontWeight:800,marginBottom:6}}>🕐 تغيير السعر — من متى يسري؟</h3>
+<p style={{fontSize:12,color:T.tm,marginBottom:16}}>{fm.name}</p>
+{[{k:"current",i:"📅",t:"من هذا الشهر فقط",s:mL(fY,fM)+" — الأشهر السابقة لا تتأثر",c:T.gn},{k:"custom",i:"📆",t:"من شهر محدد",s:"تحدد الشهر أدناه",c:T.og},{k:"all",i:"⚠️",t:"على جميع الأشهر",s:"سيغيّر حسابات الأشهر الماضية",c:T.rd}].map(o=><div key={o.k} onClick={()=>setRateFrom(o.k)} style={{padding:"10px 14px",border:"1.5px solid "+(rateFrom===o.k?o.c:T.bd),borderRadius:10,cursor:"pointer",background:rateFrom===o.k?o.c+"10":"transparent",marginBottom:8,display:"flex",gap:10,alignItems:"center"}}>
+<span style={{fontSize:18}}>{o.i}</span>
+<div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{o.t}</div><div style={{fontSize:11,color:T.tm}}>{o.s}</div></div>
+{rateFrom===o.k&&<span style={{color:o.c}}>✓</span>}
+</div>)}
+{rateFrom==="custom"&&<div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center"}}>
+<span style={{fontSize:12,color:T.tm}}>من:</span>
+<select style={{...I,flex:1}} value={rateCM} onChange={e=>setRateCM(+e.target.value)}>{["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"].map((m,i)=><option key={i} value={i+1}>{m}</option>)}</select>
+<select style={{...I,width:90}} value={rateCY} onChange={e=>setRateCY(+e.target.value)}>{[2024,2025,2026,2027,2028].map(y=><option key={y} value={y}>{y}</option>)}</select>
+</div>}
+{rateFrom==="all"&&<div style={{fontSize:12,color:T.rd,background:T.rd+"10",padding:"8px 12px",borderRadius:8,marginBottom:12}}>⚠️ سيغيّر حسابات الرواتب في الأشهر الماضية — تأكد أن هذا ما تريده</div>}
+<div style={{display:"flex",gap:10,marginTop:8}}>
+<button style={{...B(rateFrom==="all"?T.rd:T.gn,false,"lg"),flex:1,justifyContent:"center"}} onClick={confirmRate}>✅ تأكيد الحفظ</button>
+<button style={B(T.tm,true)} onClick={()=>setRateModal(null)}>إلغاء</button>
+</div>
+</div></div>}
+
+</div>};
+
+// ═══ PROJECTS + TRANSACTIONS (compact) ═══
+const Proj=()=>{const[sh,setSh]=useState(false);const[nm,setNm]=useState("");const[ei,setEi]=useState(null);const cls=()=>{setNm("");setEi(null);setSh(false)};const doSave=()=>{if(!nm.trim()){nt("","err");return}up(d=>{if(ei){const i=d.projects.findIndex(p=>p.id===ei);if(i>=0)d.projects[i].name=nm.trim()}else d.projects.push({id:gid(),name:nm.trim()})});nt("تم");cls()};
+return <div><div style={{display:"flex",justifyContent:"space-between",marginBottom:22}}><h1 style={{fontSize:26,fontWeight:800}}>المشاريع</h1><button style={B(T.pr)} onClick={()=>{cls();setSh(true)}}>➕</button></div><div style={C()}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:0}}><thead><tr>{["#","المشروع","سجلات","إجراءات"].map(h=><th key={h} style={TH}>{h}</th>)}</tr></thead><tbody>{data.projects.map((p,i)=><tr key={p.id}><td style={TD}>{i+1}</td><td style={{...TD,fontWeight:700}}>{p.name}</td><td style={TD}>{mA.filter(a=>a.projectId===p.id).length}</td><td style={TD}><div style={{display:"flex",gap:8}}><button style={B(T.pr,false,"sm")} onClick={()=>{setNm(p.name);setEi(p.id);setSh(true)}}>✏️</button><button style={B(T.rd,false,"sm")} onClick={()=>{if(window.confirm("حذف؟")){up(d=>{d.projects=d.projects.filter(x=>x.id!==p.id)});nt("تم")}}}>🗑️</button></div></td></tr>)}</tbody></table></div>{sh&&<div style={MO} onMouseDown={e=>{if(e.target===e.currentTarget)cls()}}><div style={MX} onMouseDown={e=>e.stopPropagation()}><h3 style={{fontSize:20,fontWeight:800,marginBottom:22}}>مشروع</h3><div style={{marginBottom:18}}><input style={I} value={nm} onChange={e=>setNm(e.target.value)} placeholder="اسم المشروع"/></div><div style={{display:"flex",gap:12}}><button style={B(T.pr,false,"lg")} onClick={doSave}>💾</button><button style={B(T.tm,true)} onClick={cls}>إلغاء</button></div></div></div>}</div>};
+
+const Tx=()=>{const[sh,setSh]=useState(false);const[fm,setFm]=useState({employeeId:"",type:"bonus",amount:"",date:"",note:""});const[ei,setEi]=useState(null);const cls=()=>{setFm({employeeId:"",type:"bonus",amount:"",date:"",note:""});setEi(null);setSh(false)};const tt={bonus:{l:"بونص",c:T.gn,i:"🎁"},deduction:{l:"خصم",c:T.rd,i:"📉"},advance:{l:"سلفة",c:T.og,i:"💸"}};
+const doSave=()=>{if(!fm.employeeId||!fm.amount||!fm.date){nt("ملء مطلوب","err");return}up(d=>{const tx={id:ei||gid(),employeeId:fm.employeeId,type:fm.type,amount:Number(fm.amount)||0,date:fm.date,note:fm.note||""};if(ei){const i=d.transactions.findIndex(x=>x.id===ei);if(i>=0)d.transactions[i]=tx}else d.transactions.push(tx)});nt("تم");cls()};
+return <div><div style={{display:"flex",justifyContent:"space-between",marginBottom:22}}><h1 style={{fontSize:26,fontWeight:800}}>الحركات المالية</h1><button style={B(T.pr)} onClick={()=>{cls();setSh(true)}}>➕</button></div><MF/><div style={C()}><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:0}}><thead><tr>{["الموظف","النوع","المبلغ","التاريخ","ملاحظة","✏️"].map(h=><th key={h} style={TH}>{h}</th>)}</tr></thead><tbody>{mT.length===0?<tr><td colSpan={6} style={{...TD,textAlign:"center",padding:50,color:T.tm}}>لا حركات</td></tr>:mT.map(x=>{const emp=data.employees.find(e=>e.id===x.employeeId);const tp=tt[x.type]||tt.bonus;return <tr key={x.id}><td style={TD}>{emp?.name||"—"}</td><td style={TD}><span style={BG(tp.c)}>{tp.i} {tp.l}</span></td><td style={{...TD,fontWeight:700}}>{x.amount.toLocaleString()}</td><td style={TD}>{fd(x.date)}</td><td style={TD}>{x.note||"—"}</td><td style={TD}><div style={{display:"flex",gap:8}}><button style={B(T.pr,false,"sm")} onClick={()=>{setFm({employeeId:x.employeeId,type:x.type,amount:String(x.amount),date:x.date,note:x.note||""});setEi(x.id);setSh(true)}}>✏️</button><button style={B(T.rd,false,"sm")} onClick={()=>{if(window.confirm("حذف؟")){up(d=>{d.transactions=d.transactions.filter(v=>v.id!==x.id)});nt("تم")}}}>🗑️</button></div></td></tr>})}</tbody></table></div></div>
+{sh&&<div style={MO} onMouseDown={e=>{if(e.target===e.currentTarget)cls()}}><div style={MX} onMouseDown={e=>e.stopPropagation()}><h3 style={{fontSize:20,fontWeight:800,marginBottom:22}}>حركة مالية</h3><div style={{marginBottom:18}}><label style={L}>الموظف *</label><EmpSearch employees={data.employees} value={fm.employeeId} onChange={v=>setFm({...fm,employeeId:v})}/></div><div style={{marginBottom:18}}><div style={{display:"flex",gap:8}}>{Object.entries(tt).map(([k,v])=><button key={k} style={{...B(v.c,fm.type!==k),flex:1,fontSize:12}} onClick={()=>setFm({...fm,type:k})}>{v.i} {v.l}</button>)}</div></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div style={{marginBottom:18}}><label style={L}>المبلغ *</label><input type="number" style={I} value={fm.amount} onChange={e=>setFm({...fm,amount:e.target.value})}/></div><div style={{marginBottom:18}}><label style={L}>التاريخ *</label><input type="date" style={I} value={fm.date} onChange={e=>setFm({...fm,date:e.target.value})}/></div></div><div style={{marginBottom:18}}><label style={L}>ملاحظة</label><input style={I} value={fm.note} onChange={e=>setFm({...fm,note:e.target.value})}/></div><div style={{display:"flex",gap:12}}><button style={B(T.pr,false,"lg")} onClick={doSave}>💾</button><button style={B(T.tm,true)} onClick={cls}>إلغاء</button></div></div></div>}</div>};
+
+// ═══ PAYROLL — موقع التسليم يُدخل يدوياً هنا ═══
+const Pay=()=>{const[pm,setPm]=useState(null);const[vt,setVt]=useState("all");const[lf,setLf]=useState("");const[pf,setPf]=useState("");const[projModal,setProjModal]=useState(null);const[payQ,setPayQ]=useState("");
+const[sortCol,setSortCol]=useState("name");const[sortDir,setSortDir]=useState(1);
+const doSort=(col)=>{if(sortCol===col)setSortDir(d=>-d);else{setSortCol(col);setSortDir(1)}};
+const SH=({col,label})=><th style={{...TH,cursor:"pointer",userSelect:"none",whiteSpace:"nowrap"}} onClick={()=>doSort(col)}>{label} {sortCol===col?(sortDir===1?"▲":"▼"):"⇅"}</th>;
+let emps=data.employees;if(vt!=="all")emps=emps.filter(e=>e.type===vt);
+if(payQ.trim()){const q=payQ.trim();emps=emps.filter(e=>e.name.includes(q)||e.name.split(" ").some(w=>w.startsWith(q)))}
+const ps=emps.map(e=>calc(e.id)).filter(Boolean);
+const psLoc=lf?ps.filter(p=>p.deliveryLocation===lf):ps;
+const psF=[...(pf?psLoc.filter(p=>p.recs.some(r=>r.projectId===pf)):psLoc)].sort((a,b)=>{
+  const v=(x)=>sortCol==="name"?x.emp.name:sortCol==="net"?x.net:sortCol==="remaining"?x.remaining:sortCol==="present"?x.present:sortCol==="basePay"?x.basePay:sortCol==="otPay"?x.otPay:sortCol==="totalPaid"?x.totalPaid:0;
+  return typeof v(a)==="string"?v(a).localeCompare(v(b),"ar")*sortDir:(v(a)-v(b))*sortDir;
+});
+const tN=psF.reduce((s,p)=>s+p.net,0),tP2=psF.reduce((s,p)=>s+p.totalPaid,0),tR=psF.reduce((s,p)=>s+p.remaining,0);
+// Summary by delivery location
+const locSum={};ps.forEach(p=>{if(p.deliveryLocation){const loc=p.deliveryLocation;if(!locSum[loc])locSum[loc]={c:0,t:0};locSum[loc].c++;locSum[loc].t+=p.net}});
+// Projects that have attendance this month
+const activeProjs=data.projects.filter(p=>mA.some(a=>a.projectId===p.id));
+// Build project detail for modal
+const getProjDetail=(pid)=>{const proj=data.projects.find(p=>p.id===pid);if(!proj)return null;const rows=[];data.employees.forEach(emp=>{const empRecs=mA.filter(a=>a.employeeId===emp.id&&a.projectId===pid);if(!empRecs.length)return;const p=calc(emp.id);if(!p)return;if(emp.type==="salary"){const normDays=empRecs.filter(r=>r.status==="present"&&!isFriday(r.date)).length;const friDays=empRecs.filter(r=>r.status==="friday"||isFriday(r.date)).length;const normOT=empRecs.filter(r=>r.status==="present"&&!isFriday(r.date)).reduce((s,r)=>s+(r.overtime||0),0);const friHrs=empRecs.filter(r=>r.status==="friday"||isFriday(r.date)).reduce((s,r)=>s+(r.friHours||r.hours||emp.hoursPerDay||8),0);rows.push({name:emp.name,type:"salary",normDays,friDays,normOT,friHrs,projCost:rn(p.pCosts?.[pid]||0,0)})}else{const totalHrs=empRecs.reduce((s,r)=>s+(r.hours||0),0);rows.push({name:emp.name,type:"hourly",normDays:0,friDays:0,normOT:0,friHrs:0,totalHrs,projCost:rn(p.pCosts?.[pid]||0,0)})}});return{proj,rows};};
+
+const sPay=()=>{const c=Number(pm.cash)||0,b=Number(pm.bank)||0,dl=pm.delLoc||"";
+up(d=>{const i=d.payments.findIndex(p=>p.employeeId===pm.eid&&p.year===fY&&p.month===fM);
+const r={employeeId:pm.eid,year:fY,month:fM,cashPaid:c,bankPaid:b,amount:c+b,deliveryLocation:dl,date:new Date().toISOString().slice(0,10)};
+if(i>=0)d.payments[i]=r;else d.payments.push(r);
+// Add new location to list
+if(dl&&!d.settings.deliveryLocations.includes(dl))d.settings.deliveryLocations.push(dl)});
+addLog("تسجيل دفع",(data.employees.find(function(e){return e.id===pm.eid})||{}).name);nt("تم");setPm(null)};
+
+return <div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22,flexWrap:"wrap",gap:10}}>
+<div><h1 style={{fontSize:26,fontWeight:800,marginBottom:6}}>كشف الرواتب</h1><p style={{fontSize:13,color:T.tm}}>{mL(fY,fM)}</p></div>
+<button style={B(T.ac)} onClick={()=>{dlExcel(psF.map(p=>[p.emp.name,p.emp.type==="salary"?"راتب":"ساعة",p.emp.type==="salary"?p.present:p.totalHours,rn(p.totalOT,1),p.emp.type==="salary"?p.fridayDays:0,p.emp.type==="salary"?rn(p.fridayHours||0,1):0,p.emp.type==="salary"?(p.emp.overtimeRate&&p.emp.overtimeRate>0?p.emp.overtimeRate:rn(p.otHourlyRate,2)):0,rn(p.basePay,0),rn(p.bonus,0),rn(p.deduction,0),rn(p.advance,0),rn(p.net,0),rn(p.cashPaid,0),rn(p.bankPaid,0),rn(p.remaining,0),p.deliveryLocation||""]),["الموظف","النوع","أيام/ساعات","إضافي (س)","أيام الجمعة","ساعات الجمعة","سعر الإضافي","أساسي","بونص","خصم","سلف","صافي","كاش","بنك","متبقي","📍 التسليم"],"رواتب_"+fM+"_"+fY);nt("تم")}}>📊 تصدير Excel</button>
+<button style={B(T.bk,true,"sm")} onClick={function(){
+var sigList=psF;
+var locTitle=lf?(" — "+lf):" — جميع المواقع";
+var totalNet=sigList.reduce(function(s,p){return s+p.net},0);
+var totalBank=sigList.reduce(function(s,p){return s+p.bankPaid},0);
+// المتبقي الصحيح: مجموع ما لم يُدفع بعد (양수 فقط)
+var totalPayout=sigList.reduce(function(s,p){return s+(p.remaining>0?p.remaining:0)},0);
+// إجمالي الزيادة المدفوعة (التي يجب استردادها)
+var totalOverpaid=sigList.reduce(function(s,p){return s+(p.remaining<0?Math.abs(p.remaining):0)},0);
+var totalBase=sigList.reduce(function(s,p){return s+p.basePay},0);
+var totalOT=sigList.reduce(function(s,p){return s+p.otPay},0);
+var totalBonus=sigList.reduce(function(s,p){return s+p.bonus},0);
+var totalDed=sigList.reduce(function(s,p){return s+p.deduction},0);
+var totalAdv=sigList.reduce(function(s,p){return s+p.advance},0);
+var C=cfg.currency;
+function n(v){return rn(v,0).toLocaleString()}
+function td(val,style){return '<td style="padding:8px 5px;text-align:center;font-size:11px;'+(style||'')+'">'+val+'</td>'}
+function tdL(val,style){return '<td style="padding:8px 5px;font-size:11px;'+(style||'')+'">'+val+'</td>'}
+var rows=sigList.map(function(p,i){
+var iS=p.emp.type==="salary";
+var rem=p.remaining;
+var grossBeforeDed=rn(p.basePay+p.otPay+p.bonus);
+var dayHours=iS?(p.present+"يوم"+(p.absent>0?" / غ:"+p.absent:"")):p.totalHours+"س";
+var friCell=iS&&p.fridayDays>0?(p.fridayDays+"يوم / "+rn(p.fridayHours,1)+"س"):"—";
+var otHrs=iS&&p.totalOT>0?(rn(p.totalOT,1)+"س"):"—";
+// منطق عمود "للاستلام / الحالة"
+var statusCell;
+if(rem>0){
+  statusCell='<div style="text-align:center">'+
+    '<div style="color:#92400e;font-size:10px;margin-bottom:2px">💵 للاستلام</div>'+
+    '<div style="color:#b45309;font-weight:800;font-size:14px;background:#fef9c3;padding:4px 8px;border-radius:6px;border:1px solid #f59e0b">'+n(rem)+' '+C+'</div>'+
+    '</div>';
+}else if(rem===0){
+  statusCell='<div style="text-align:center;color:#166534;font-weight:700;font-size:13px">✅<br><span style="font-size:11px">مسدد</span></div>';
+}else{
+  // زيادة مدفوعة — تصميم احترافي واضح
+  statusCell=
+    '<div style="background:linear-gradient(135deg,#fef2f2,#fee2e2);border:1.5px solid #ef4444;border-radius:8px;padding:6px 8px;text-align:center">'+
+    '<div style="color:#991b1b;font-size:10px;font-weight:700;margin-bottom:2px">⚠️ دُفع زيادة</div>'+
+    '<div style="color:#dc2626;font-weight:900;font-size:14px;letter-spacing:0.5px">'+n(Math.abs(rem))+' '+C+'</div>'+
+    '<div style="color:#7f1d1d;font-size:9px;margin-top:2px;border-top:1px solid #fca5a5;padding-top:2px">مطلوب الاسترداد</div>'+
+    '</div>';
+}
+return '<tr style="'+(i%2===0?'':'background:#f8f9ff')+';'+(rem<0?'background:#fff5f5;':'')+'">' +
+tdL('<b style="font-size:12px">'+(i+1)+'. '+p.emp.name+'</b><br><span style="color:#666;font-size:10px">'+(iS?"💼 راتب":"⏰ ساعة")+(p.deliveryLocation?" | 📍"+p.deliveryLocation:"")+'</span>')+
+td(dayHours)+
+td(friCell,'color:#d97706')+
+td(otHrs,'color:#0891b2')+
+td(n(p.basePay),'font-weight:700')+
+td(p.otPay>0?('<span style="color:#0891b2">+'+n(p.otPay)+'</span>'):'—')+
+td(p.bonus>0?('<span style="color:green">+'+n(p.bonus)+'</span>'):'—')+
+td('<b style="color:#1a3a6a">'+n(grossBeforeDed)+'</b>','background:#eef2ff')+
+td(p.deduction>0?('<span style="color:red">−'+n(p.deduction)+'</span>'):'—')+
+td(p.advance>0?('<span style="color:#d97706">−'+n(p.advance)+'</span>'):'—')+
+td('<b style="color:#166534;font-size:13px">'+n(p.net)+'</b>','background:#f0faf0')+
+td(p.bankPaid>0?('<b style="color:#1d4ed8">🏦 '+n(p.bankPaid)+'</b>'):'—')+
+'<td style="padding:4px 5px;text-align:center">'+statusCell+'</td>'+
+'<td style="padding:8px 5px;border-bottom:1px dashed #aaa;min-width:70px"></td>'+
+'<td style="padding:8px 5px;font-size:10px;color:#888;min-width:45px"></td>'+
+'</tr>';
+}).join("");
+var footer='<tr style="background:#1a3a6a;color:#fff;font-weight:700">'+
+'<td style="padding:10px 5px;font-size:12px">الإجمالي ('+sigList.length+')</td>'+
+td('')+td('')+td('')+
+td(n(totalBase))+td(n(totalOT))+td(n(totalBonus))+
+'<td style="padding:10px 5px;text-align:center">'+n(totalBase+totalOT+totalBonus)+'</td>'+
+td(n(totalDed))+td(n(totalAdv))+
+'<td style="padding:10px 5px;text-align:center;font-size:13px">'+n(totalNet)+'</td>'+
+'<td style="padding:10px 5px;text-align:center;color:#93c5fd">'+n(totalBank)+'</td>'+
+'<td style="padding:10px 5px;text-align:center">'+(totalPayout>0?'<span style="color:#86efac;font-size:13px">💵 '+n(totalPayout)+'</span>':'')+(totalOverpaid>0?'<br><span style="color:#fca5a5;font-size:11px">⚠️ استرداد: '+n(totalOverpaid)+'</span>':'')+'</td>'+
+'<td colspan="2"></td>'+
+'</tr>';
+var theadStyle='background:#1a3a6a;color:#fff;font-size:11px';
+var th=function(t,w){return '<th style="'+theadStyle+';padding:7px 4px;text-align:center;'+(w?'width:'+w+';':'')+'">'+t+'</th>'};
+var thead=
+th("الاسم / النوع","18%")+
+th("حضور/غياب","7%")+
+th("🕌 جمعة","6%")+
+th("إضافي","5%")+
+th("أساسي","7%")+
+th("أجر إضافي","6%")+
+th("بونص","5%")+
+th("الإجمالي","7%")+
+th("خصم","5%")+
+th("سلف","5%")+
+th("الصافي","7%")+
+th("🏦 بنك","6%")+
+th("💵 للاستلام","7%")+
+th("التوقيع","11%")+
+th("التاريخ","4%");
+mkPDF("كشف الرواتب والتوقيعات",
+'<div class="hdr"><h1>كشف استلام الرواتب — تفاصيل كاملة</h1>'+
+'<div class="sub">'+cfg.companyName+' — '+mL(fY,fM)+locTitle+'</div></div>'+
+'<div class="cds">'+
+'<div class="ic"><div class="l">عدد الموظفين</div><div class="v">'+sigList.length+'</div></div>'+
+'<div class="ic"><div class="l">إجمالي الرواتب</div><div class="v">'+n(totalNet)+' '+C+'</div></div>'+
+'<div class="ic"><div class="l">🏦 مدفوع بنك</div><div class="v" style="color:#1d4ed8">'+n(totalBank)+' '+C+'</div></div>'+
+(totalPayout>0?'<div class="ic"><div class="l" style="color:green">💵 للصرف نقداً</div><div class="v" style="color:green;font-size:17px"><b>'+n(totalPayout)+' '+C+'</b></div></div>':'')+
+(totalOverpaid>0?'<div class="ic" style="border:2px solid #ef4444;background:#fef2f2"><div class="l" style="color:#dc2626;font-weight:700">⚠️ زيادة مدفوعة — استرداد</div><div class="v" style="color:#dc2626;font-size:17px"><b>'+n(totalOverpaid)+' '+C+'</b></div></div>':'')+
+'<div class="ic"><div class="l">إجمالي البونص</div><div class="v" style="color:green">'+n(totalBonus)+' '+C+'</div></div>'+
+'<div class="ic"><div class="l">إجمالي الخصومات</div><div class="v" style="color:red">'+n(totalDed)+' '+C+'</div></div>'+
+'<div class="ic"><div class="l">إجمالي السلف</div><div class="v" style="color:#d97706">'+n(totalAdv)+' '+C+'</div></div>'+
+'</div>'+
+'<table style="font-size:11px"><thead><tr>'+thead+'</tr></thead>'+
+'<tbody>'+rows+footer+'</tbody></table>'+
+'<div class="sig" style="margin-top:30px">'+
+'<div class="sb"><div class="sl">توقيع المسؤول عن الصرف</div></div>'+
+'<div class="sb"><div class="sl">اعتماد المدير</div></div>'+
+'<div class="sb"><div class="sl">تاريخ الصرف: ___________</div></div>'+
+'</div>',true);}}>🖊️ {lf?"توقيعات "+lf:"توقيعات الكل"}</button>
+
+{/* زر طباعة الكروت */}
+<button style={B(T.yw||"#f59e0b",false,"sm")} onClick={function(){
+var list=psF;
+var locLabel=lf||"جميع المواقع";
+var C2=cfg.currency;
+var M2=mL(fY,fM);
+var comp=cfg.companyName||"";
+var dpm=mDays||cfg.daysPerMonth||30;
+var otMult=cfg.overtimeMultiplier||1.5;
+function n(v){return rn(v,0).toLocaleString()}
+function n2(v){return rn(v,2).toLocaleString()}
+
+var cards=list.map(function(p){
+var iS=p.emp.type==="salary";
+var emp=p.emp;
+
+// ── معلومات السعر ──
+var rateInfo='';
+if(iS){
+  var dayRate=rn(emp.baseSalary/dpm);
+  var otRate=emp.overtimeRate&&emp.overtimeRate>0?emp.overtimeRate:p.otHourlyRate||0;
+  rateInfo=
+    '<div class="rate-box">'+
+    '<span>الراتب الشهري: <b>'+n(emp.baseSalary)+' '+C2+'</b></span>'+
+    '<span>سعر اليوم: <b>'+n2(dayRate)+'</b></span>'+
+    '<span>سعر ساعة الإضافي: <b>'+n2(otRate)+' '+C2+'/س</b></span>'+
+    '</div>';
+}else{
+  rateInfo=
+    '<div class="rate-box">'+
+    '<span>سعر الساعة: <b>'+n2(emp.hourlyRate)+' '+C2+'/س</b></span>'+
+    '</div>';
+}
+
+// ── بيانات الحضور ──
+var attInfo='<div class="att-box">';
+if(iS){
+  attInfo+='<span class="att-item">📅 حضور: <b>'+p.present+' يوم</b></span>';
+  if(p.absent>0)attInfo+='<span class="att-item absent">❌ غياب: <b>'+p.absent+' يوم</b></span>';
+  if(p.fridayDays>0)attInfo+='<span class="att-item fri">🕌 جمعة: <b>'+p.fridayDays+' يوم</b></span>';
+  if(p.totalOT>0)attInfo+='<span class="att-item ot">⚡ إضافي: <b>'+rn(p.totalOT,1)+' ساعة</b></span>';
+}else{
+  attInfo+='<span class="att-item">⏱️ ساعات العمل: <b>'+p.totalHours+' ساعة</b></span>';
+}
+attInfo+='</div>';
+
+// ── جدول الحساب ──
+var gross=rn(p.basePay+p.otPay+p.bonus);
+var rows='';
+rows+='<tr><td>الأساسي</td><td class="num">'+n(p.basePay)+'</td></tr>';
+if(iS&&p.otPay>0)rows+='<tr class="ot-row"><td>أجر الإضافي</td><td class="num">+ '+n(p.otPay)+'</td></tr>';
+if(p.bonus>0)rows+='<tr class="bon-row"><td>بونص</td><td class="num">+ '+n(p.bonus)+'</td></tr>';
+if(p.otPay>0||p.bonus>0)rows+='<tr class="gross-row"><td>الإجمالي</td><td class="num">'+n(gross)+'</td></tr>';
+if(p.deduction>0)rows+='<tr class="ded-row"><td>خصم</td><td class="num">− '+n(p.deduction)+'</td></tr>';
+if(p.advance>0)rows+='<tr class="adv-row"><td>سلفة</td><td class="num">− '+n(p.advance)+'</td></tr>';
+rows+='<tr class="net-row"><td>✅ الصافي</td><td class="num">'+n(p.net)+' '+C2+'</td></tr>';
+
+return(
+'<div class="card">'+
+// رأس الكرت
+'<div class="card-hdr">'+
+'<span class="co-name">'+comp+'</span>'+
+'<span class="mo-name">'+M2+'</span>'+
+'</div>'+
+// اسم الموظف
+'<div class="emp-name">'+emp.name+'</div>'+
+// النوع والموقع
+'<div class="emp-type">'+
+'<span class="type-badge '+(iS?'sal':'hrly')+'">'+(iS?'💼 راتب شهري':'⏰ بالساعة')+'</span>'+
+(p.deliveryLocation?'<span class="loc-badge">📍 '+p.deliveryLocation+'</span>':'')+
+'</div>'+
+// السعر
+rateInfo+
+// الحضور
+attInfo+
+// الجدول
+'<table class="sal-tbl">'+rows+'</table>'+
+'</div>'
+);
+}).join("");
+
+// ── CSS ──
+var css=
+'*{margin:0;padding:0;box-sizing:border-box}'+
+'body{font-family:Arial,Tahoma,sans-serif;direction:rtl;background:#e8e8e8;padding:8px}'+
+'h2{text-align:center;font-size:13px;color:#333;margin:4px 0 10px;font-weight:700}'+
+'.page{width:210mm;margin:0 auto;background:white}'+
+'.grid{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #999;border-right:1px solid #999}'+
+'.card{border-bottom:2px dashed #bbb;border-left:2px dashed #bbb;padding:10px 12px;display:flex;flex-direction:column;gap:5px;min-height:130mm}'+
+// رأس
+'.card-hdr{display:flex;justify-content:space-between;align-items:center;padding-bottom:5px;border-bottom:2px solid #1a3a6a;margin-bottom:4px}'+
+'.co-name{font-size:10px;font-weight:800;color:#1a3a6a}'+
+'.mo-name{font-size:10px;color:#555;font-weight:600}'+
+// اسم
+'.emp-name{font-size:15px;font-weight:900;color:#1a3a6a;text-align:center;padding:5px 0;border-bottom:1px solid #eee}'+
+// نوع وموقع
+'.emp-type{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:2px 0}'+
+'.type-badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700}'+
+'.sal{background:#dbeafe;color:#1d4ed8}'+
+'.hrly{background:#fef3c7;color:#d97706}'+
+'.loc-badge{font-size:10px;padding:2px 8px;border-radius:10px;background:#e0f2fe;color:#0369a1;font-weight:600}'+
+// السعر
+'.rate-box{background:#f0f4ff;border:1px solid #c8d4f0;border-radius:5px;padding:5px 8px;font-size:10px;display:flex;flex-direction:column;gap:2px;color:#333}'+
+'.rate-box span{display:flex;justify-content:space-between}'+
+// الحضور
+'.att-box{background:#f8f9fa;border-radius:5px;padding:5px 8px;display:flex;flex-wrap:wrap;gap:6px}'+
+'.att-item{font-size:10px;color:#444;white-space:nowrap}'+
+'.att-item.absent{color:#dc2626}'+
+'.att-item.fri{color:#d97706}'+
+'.att-item.ot{color:#0891b2}'+
+// جدول
+'.sal-tbl{width:100%;border-collapse:collapse;font-size:11px;margin-top:4px}'+
+'.sal-tbl td{padding:3px 5px;border-bottom:1px solid #f0f0f0}'+
+'.sal-tbl td:last-child{text-align:left;direction:ltr;font-weight:700;padding-left:8px}'+
+'.ot-row td{color:#0891b2}'+
+'.bon-row td{color:#16a34a}'+
+'.gross-row td{background:#eef2ff;font-weight:700;border-top:1px solid #c8d4f0;border-bottom:1px solid #c8d4f0}'+
+'.ded-row td{color:#dc2626}'+
+'.adv-row td{color:#d97706}'+
+'.net-row td{background:#dcfce7;font-weight:900;font-size:13px;color:#166534;border-top:2px solid #16a34a}'+
+// طباعة
+'@media print{'+
+'body{background:white;padding:0}'+
+'.page{width:100%;box-shadow:none}'+
+'.grid{border-color:#666}'+
+'.card{border-color:#888;min-height:unset}'+
+'@page{size:A4 portrait;margin:4mm}'+
+'}';
+
+var html2=
+'<!DOCTYPE html><html lang="ar" dir="rtl"><head>'+
+'<meta charset="UTF-8">'+
+'<title>كروت رواتب — '+locLabel+' — '+M2+'</title>'+
+'<style>'+css+'</style>'+
+'</head><body>'+
+'<h2>🪪 كروت رواتب — '+locLabel+' — '+M2+' &nbsp;|&nbsp; '+list.length+' موظف</h2>'+
+'<div class="page"><div class="grid">'+cards+'</div></div>'+
+'</body></html>';
+
+var w=window.open("","_blank","width=900,height=750");
+if(w){w.document.write(html2);w.document.close();setTimeout(function(){w.print()},900)}
+else{var b=new Blob([html2],{type:"text/html"});var u=URL.createObjectURL(b);var a=document.createElement("a");a.href=u;a.target="_blank";a.click();setTimeout(function(){URL.revokeObjectURL(u)},2000)}
+}}>🪪 {lf?"كروت "+lf:"كروت الكل"}</button>
+
+</div>
+<MF/><AW/>
+
+{/* Type filter */}
+<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+{[{k:"all",l:"الكل",c:T.pr},{k:"salary",l:"💼 راتب",c:T.ac},{k:"hourly",l:"⏰ ساعة",c:T.og}].map(x=><button key={x.k} style={B(x.c,vt!==x.k,"sm")} onClick={()=>setVt(x.k)}>{x.l}</button>)}
+</div>
+{/* Employee name search */}
+<div style={{display:"flex",gap:10,marginBottom:14,alignItems:"center"}}>
+<div style={{flex:"1 1 300px",position:"relative"}}><input style={{...I,paddingRight:36}} value={payQ} onChange={e=>setPayQ(e.target.value)} placeholder="🔍 بحث باسم الموظف..."/>{payQ&&<span onClick={()=>setPayQ("")} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",cursor:"pointer",fontSize:16,color:T.tm}}>✕</span>}</div>
+{payQ&&<span style={{fontSize:12,color:T.tm}}>{psF.length} نتيجة</span>}
+</div>
+
+{/* Project filter */}
+{activeProjs.length>0&&<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+<span style={{fontSize:13,color:T.tm,flexShrink:0}}>🏗️ فلتر المشروع:</span>
+<button style={B(T.pr,!!pf,"sm")} onClick={()=>setPf("")}>الكل</button>
+{activeProjs.map(p=>{const cnt=mA.filter(a=>a.projectId===p.id).length;return <div key={p.id} style={{display:"flex",gap:0}}>
+<button style={{...B(T.ac,pf!==p.id,"sm"),borderRadius:"10px 0 0 10px"}} onClick={()=>setPf(pf===p.id?"":p.id)}>{p.name} <span style={{fontSize:10,opacity:0.7}}>({cnt})</span></button>
+<button title="عرض تفاصيل المشروع" style={{...B(T.bk,true,"sm"),borderRadius:"0 10px 10px 0",borderRight:"none",padding:"6px 10px"}} onClick={()=>setProjModal(getProjDetail(p.id))}>🔍</button>
+</div>})}
+</div>}
+{pf&&<div style={{background:T.ac+"10",border:"1px solid "+T.ac+"30",borderRadius:10,padding:"10px 16px",marginBottom:12,fontSize:13,color:T.ac,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+<span>📌 تصفية حسب: <strong>{data.projects.find(p=>p.id===pf)?.name}</strong> — {psF.length} موظف</span>
+<button style={{...B(T.tm,true,"sm"),padding:"3px 10px"}} onClick={()=>setPf("")}>✕ إلغاء</button>
+</div>}
+
+{/* Delivery location filter */}
+<div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap",alignItems:"center"}}>
+<span style={{fontSize:13,color:T.tm}}>📍 فلتر موقع التسليم:</span>
+<button style={B(T.bk,!lf,"sm")} onClick={()=>setLf("")}>الكل</button>
+{dlocs.map(loc=><button key={loc} style={B(T.bk,lf!==loc,"sm")} onClick={()=>setLf(loc)}>{loc}</button>)}
+</div>
+
+{/* Location summary */}
+{Object.keys(locSum).length>0&&<div style={{...C(),padding:16,marginBottom:18}}>
+<h4 style={{fontSize:14,fontWeight:700,marginBottom:12}}>📍 ملخص مواقع التسليم</h4>
+<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>
+{Object.entries(locSum).map(([loc,info])=><div key={loc} style={{...ST(T.bk),padding:"14px 16px"}}>
+<div style={{fontSize:12,color:T.tm}}>{loc}</div>
+<div style={{fontSize:18,fontWeight:800}}>{rn(info.t,0).toLocaleString()} {cfg.currency}</div>
+<div style={{fontSize:11,color:T.tm}}>{info.c} موظف</div>
+</div>)}
+</div></div>}
+
+<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:22}}>
+<div style={ST(T.pr)}><div style={{fontSize:12,color:T.tm}}>الرواتب</div><div style={{fontSize:22,fontWeight:800}}>{rn(tN,0).toLocaleString()}</div></div>
+<div style={ST(T.gn)}><div style={{fontSize:12,color:T.tm}}>المدفوع</div><div style={{fontSize:22,fontWeight:800}}>{rn(tP2,0).toLocaleString()}</div></div>
+<div style={ST(T.og)}><div style={{fontSize:12,color:T.tm}}>المتبقي</div><div style={{fontSize:22,fontWeight:800}}>{rn(tR,0).toLocaleString()}</div></div>
+</div>
+
+<div style={C()}><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,minWidth:1600}}>
+<thead>
+<tr>
+<th style={TH} colSpan={6}></th>
+<th style={{...TH,background:T.pr+"20",color:T.pr,textAlign:"center"}} colSpan={4}>الحساب</th>
+<th style={{...TH,background:T.rd+"15",color:T.rd,textAlign:"center"}} colSpan={3}>الخصومات</th>
+<th style={{...TH,background:T.gn+"15",color:T.gn,textAlign:"center"}} colSpan={4}>الدفع</th>
+<th style={TH} colSpan={2}></th>
+</tr>
+<tr>
+<SH col="name" label="الموظف"/>
+<th style={TH}>النوع</th>
+<SH col="present" label="حضور"/>
+<th style={TH}>غياب</th>
+<th style={TH}>إضافي (س)</th>
+<th style={TH}>أيام الجمعة</th>
+<SH col="basePay" label="أساسي"/>
+<SH col="otPay" label="أجر الإضافي"/>
+<th style={TH}>بونص</th>
+<th style={TH}>إجمالي</th>
+<th style={TH}>خصم</th>
+<th style={TH}>سلف</th>
+<SH col="net" label="صافي"/>
+<th style={TH}>مدفوع كاش</th>
+<th style={TH}>مدفوع بنك</th>
+<SH col="totalPaid" label="إجمالي المدفوع"/>
+<SH col="remaining" label="متبقي للاستلام"/>
+<th style={TH}>حالة</th>
+<th style={TH}>📍 التسليم</th>
+<th style={TH}>💳</th>
+</tr>
+</thead>
+<tbody>{psF.map(p=>{
+const sc=p.remaining>0?T.og:p.remaining<0?T.rd:T.gn;
+const st=p.remaining>0?"متبقي":p.remaining<0?"زيادة دُفعت":p.totalPaid>0?"مسدد ✅":"لم يُدفع";
+const iS=p.emp.type==="salary";
+// الإجمالي = أساسي + أجر إضافي + بونص (قبل الخصومات)
+const grossBeforeDed=rn(p.basePay+p.otPay+p.bonus);
+return <tr key={p.emp.id}>
+<td style={{...TD,fontWeight:700}}>{p.emp.name}</td>
+<td style={TD}>{iS?<span style={sB}>💼</span>:<span style={hB}>⏰</span>}</td>
+<td style={{...TD,color:T.gn,fontWeight:600}}>{iS?p.present+" يوم":p.totalHours+" س"}</td>
+<td style={{...TD,color:p.absent>0?T.rd:T.tm,fontWeight:p.absent>0?700:400}}>{p.absent>0?p.absent+" يوم":"—"}</td>
+<td style={TD}>{iS?<span style={{fontWeight:600,color:p.totalOT>0?T.ac:T.tm}}>{p.totalOT>0?rn(p.totalOT,1)+"س":"—"}</span>:"—"}</td>
+<td style={TD}>{iS&&p.fridayDays>0?<span style={{color:T.og,fontWeight:700}}>🕌 {p.fridayDays}يوم<br/><span style={{fontSize:10}}>{rn(p.fridayHours,1)}س</span></span>:<span style={{color:T.tm,fontSize:11}}>—</span>}</td>
+{/* الحساب */}
+<td style={{...TD,background:T.pr+"06"}}>{rn(p.basePay,0).toLocaleString()}</td>
+<td style={{...TD,background:T.pr+"06",color:p.otPay>0?T.ac:T.tm,fontWeight:p.otPay>0?700:400}}>{p.otPay>0?"+"+rn(p.otPay,0).toLocaleString():"—"}</td>
+<td style={{...TD,background:T.pr+"06",color:p.bonus>0?T.gn:T.tm}}>{p.bonus>0?"+"+rn(p.bonus,0).toLocaleString():"—"}</td>
+<td style={{...TD,background:T.pr+"10",fontWeight:700,color:T.pr}}>{rn(grossBeforeDed,0).toLocaleString()}</td>
+{/* الخصومات */}
+<td style={{...TD,background:T.rd+"04",color:p.deduction>0?T.rd:T.tm}}>{p.deduction>0?"−"+rn(p.deduction,0).toLocaleString():"—"}</td>
+<td style={{...TD,background:T.rd+"04",color:p.advance>0?T.og:T.tm}}>{p.advance>0?"−"+rn(p.advance,0).toLocaleString():"—"}</td>
+<td style={{...TD,fontWeight:800,fontSize:15,background:T.gn+"08",color:T.gn}}>{rn(p.net,0).toLocaleString()}</td>
+{/* الدفع */}
+<td style={{...TD,background:T.gn+"04",color:p.cashPaid>0?T.gn:T.tm}}>{p.cashPaid>0?rn(p.cashPaid,0).toLocaleString():"—"}</td>
+<td style={{...TD,background:T.bk+"08",color:p.bankPaid>0?T.bk:T.tm,fontWeight:p.bankPaid>0?700:400}}>
+{p.bankPaid>0?<span title="تم تحويله بنكياً">🏦 {rn(p.bankPaid,0).toLocaleString()}</span>:"—"}
+</td>
+<td style={{...TD,color:T.tm,fontSize:12}}>{p.totalPaid>0?rn(p.totalPaid,0).toLocaleString():"—"}</td>
+<td style={{...TD,fontWeight:800,color:sc,fontSize:14}}>{rn(Math.abs(p.remaining),0).toLocaleString()}</td>
+<td style={TD}><span style={BG(sc)}>{st}</span></td>
+<td style={TD}>{p.deliveryLocation?<span style={BG(T.bk)}>{p.deliveryLocation}</span>:<span style={{color:T.tm,fontSize:11}}>—</span>}</td>
+<td style={TD}><button style={B(T.ac,false,"sm")} onClick={()=>{const ex=mP.find(x=>x.employeeId===p.emp.id);setPm({eid:p.emp.id,cash:String(ex?.cashPaid||0),bank:String(ex?.bankPaid||0),delLoc:ex?.deliveryLocation||"",net:p.net})}}>💳</button></td>
+</tr>})}
+{/* صف الإجماليات */}
+{psF.length>0&&<tr style={{background:T.pr+"0a"}}>
+<td style={{...TD,fontWeight:800,color:T.tm}} colSpan={6}>الإجمالي ({psF.length} موظف)</td>
+<td style={{...TD,fontWeight:700}}>{rn(psF.reduce((s,p)=>s+p.basePay,0),0).toLocaleString()}</td>
+<td style={{...TD,fontWeight:700,color:T.ac}}>{rn(psF.reduce((s,p)=>s+p.otPay,0),0).toLocaleString()}</td>
+<td style={{...TD,fontWeight:700,color:T.gn}}>{rn(psF.reduce((s,p)=>s+p.bonus,0),0).toLocaleString()}</td>
+<td style={{...TD,fontWeight:800,color:T.pr}}>{rn(psF.reduce((s,p)=>s+p.basePay+p.otPay+p.bonus,0),0).toLocaleString()}</td>
+<td style={{...TD,fontWeight:700,color:T.rd}}>{rn(psF.reduce((s,p)=>s+p.deduction,0),0).toLocaleString()}</td>
+<td style={{...TD,fontWeight:700,color:T.og}}>{rn(psF.reduce((s,p)=>s+p.advance,0),0).toLocaleString()}</td>
+<td style={{...TD,fontWeight:800,color:T.gn,fontSize:15}}>{rn(tN,0).toLocaleString()}</td>
+<td style={{...TD,fontWeight:700,color:T.gn}}>{rn(psF.reduce((s,p)=>s+p.cashPaid,0),0).toLocaleString()}</td>
+<td style={{...TD,fontWeight:700,color:T.bk}}>{rn(psF.reduce((s,p)=>s+p.bankPaid,0),0).toLocaleString()}</td>
+<td style={{...TD,fontWeight:700}}>{rn(tP2,0).toLocaleString()}</td>
+<td style={{...TD,fontWeight:800,color:T.og,fontSize:15}}>{rn(tR,0).toLocaleString()}</td>
+<td colSpan={3} style={TD}></td>
+</tr>}
+</tbody>
+</table></div></div>
+
+{/* Payment modal — includes delivery location */}
+{pm&&<div style={MO} onMouseDown={e=>{if(e.target===e.currentTarget)setPm(null)}}><div style={MX}>
+<h3 style={{fontSize:20,fontWeight:800,marginBottom:16}}>💳 تسجيل دفع وموقع التسليم</h3>
+<p style={{fontSize:14,color:T.tm,marginBottom:20}}>صافي: <strong style={{color:T.pr}}>{rn(pm.net,0).toLocaleString()} {cfg.currency}</strong></p>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+<div style={{marginBottom:18}}><label style={L}>💵 كاش</label><input type="number" min="0" style={I} value={pm.cash} onChange={e=>setPm({...pm,cash:e.target.value})}/></div>
+<div style={{marginBottom:18}}><label style={L}>🏦 بنك</label><input type="number" min="0" style={I} value={pm.bank} onChange={e=>setPm({...pm,bank:e.target.value})}/></div>
+</div>
+<div style={{display:"flex",gap:8,marginBottom:16}}><button style={B(T.gn,true,"sm")} onClick={()=>setPm({...pm,cash:String(pm.net),bank:"0"})}>كاش كامل</button><button style={B(T.bk,true,"sm")} onClick={()=>setPm({...pm,bank:String(pm.net),cash:"0"})}>بنك كامل</button></div>
+
+{/* DELIVERY LOCATION — manual entry */}
+<div style={{marginBottom:18,background:T.bk+"08",border:"1px solid "+T.bk+"30",borderRadius:12,padding:16}}>
+<label style={{...L,color:T.bk}}>📍 موقع التسليم (يدوي)</label>
+<div style={{display:"flex",gap:8}}>
+<select style={{...I,flex:1}} value={pm.delLoc} onChange={e=>setPm({...pm,delLoc:e.target.value})}>
+<option value="">— اختر أو اكتب —</option>
+{dlocs.map(loc=><option key={loc} value={loc}>{loc}</option>)}
+</select>
+<input style={{...I,flex:1}} value={pm.delLoc} onChange={e=>setPm({...pm,delLoc:e.target.value})} placeholder="أو اكتب موقع جديد"/>
+</div>
+<p style={{fontSize:11,color:T.tm,marginTop:6}}>💡 الموظف يمكن أن يعمل في مشروع ويستلم الراتب في موقع آخر</p>
+</div>
+
+{(()=>{const tot=(Number(pm.cash)||0)+(Number(pm.bank)||0),df=rn(pm.net-tot);return <div style={{background:T.sf,border:"1px solid "+T.bd,borderRadius:10,padding:14,marginBottom:18}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{color:T.tm}}>المدفوع</span><span style={{fontWeight:700}}>{tot.toLocaleString()}</span></div><div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:T.tm}}>{df>0?"متبقي":df<0?"مطلوب":"حالة"}</span><span style={{fontWeight:700,color:df>0?T.og:df<0?T.rd:T.gn}}>{df===0?"مسدد ✅":Math.abs(df).toLocaleString()}</span></div></div>})()}
+<div style={{display:"flex",gap:12}}><button style={B(T.pr,false,"lg")} onClick={sPay}>💾 حفظ</button><button style={B(T.tm,true)} onClick={()=>setPm(null)}>إلغاء</button></div>
+</div></div>}
+
+{/* Project detail modal */}
+{projModal&&<div style={MO} onMouseDown={e=>{if(e.target===e.currentTarget)setProjModal(null)}}><div style={{...MX,maxWidth:680}} onMouseDown={e=>e.stopPropagation()}>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+<h3 style={{fontSize:20,fontWeight:800}}>🏗️ {projModal.proj.name}</h3>
+<button style={B(T.tm,true,"sm")} onClick={()=>setProjModal(null)}>✕ إغلاق</button>
+</div>
+<p style={{fontSize:13,color:T.tm,marginBottom:20}}>{mL(fY,fM)} — {projModal.rows.length} موظف</p>
+{projModal.rows.length===0?<div style={{textAlign:"center",padding:40,color:T.tm}}>لا يوجد موظفون في هذا المشروع هذا الشهر</div>:
+<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:0}}>
+<thead><tr>
+<th style={TH}>الموظف</th>
+<th style={TH}>النوع</th>
+<th style={TH}>أيام حضور</th>
+<th style={TH}>🕌 أيام جمعة</th>
+<th style={TH}>إضافي (س)</th>
+<th style={TH}>ساعات جمعة</th>
+<th style={TH}>ساعات (ساعة)</th>
+<th style={{...TH,color:T.ac}}>التكلفة</th>
+</tr></thead>
+<tbody>{projModal.rows.map((r,i)=><tr key={i}>
+<td style={{...TD,fontWeight:700}}>{r.name}</td>
+<td style={TD}>{r.type==="salary"?<span style={sB}>💼</span>:<span style={hB}>⏰</span>}</td>
+<td style={TD}>{r.type==="salary"?r.normDays+" يوم":"—"}</td>
+<td style={TD}>{r.type==="salary"&&r.friDays>0?<span style={{color:T.og,fontWeight:700}}>{r.friDays} يوم</span>:"—"}</td>
+<td style={TD}>{r.type==="salary"&&r.normOT>0?<span style={{color:T.og}}>{rn(r.normOT,1)} س</span>:"—"}</td>
+<td style={TD}>{r.type==="salary"&&r.friHrs>0?<span style={{color:T.og}}>{rn(r.friHrs,1)} س</span>:"—"}</td>
+<td style={TD}>{r.type==="hourly"?r.totalHrs+" س":"—"}</td>
+<td style={{...TD,fontWeight:800,color:T.ac}}>{r.projCost.toLocaleString()} {cfg.currency}</td>
+</tr>)}
+<tr style={{background:T.pr+"0a"}}>
+<td colSpan={7} style={{...TD,fontWeight:700,textAlign:"left"}}>الإجمالي</td>
+<td style={{...TD,fontWeight:800,fontSize:15,color:T.ac}}>{projModal.rows.reduce((s,r)=>s+r.projCost,0).toLocaleString()} {cfg.currency}</td>
+</tr>
+</tbody></table></div>}
+<div style={{marginTop:16,display:"flex",gap:8}}>
+<button style={B(T.ac,true,"sm")} onClick={()=>{setPf(projModal.proj.id);setProjModal(null)}}>📌 فلترة هذا المشروع في الكشف</button>
+</div>
+</div></div>}
+</div>};
+
+// ═══ PROJECT COSTS ═══
+const PCost=()=>{
+const pc={};data.projects.forEach(p=>{pc[p.id]={name:p.name,total:0,emps:{}}});
+data.employees.forEach(emp=>{const p=calc(emp.id);if(p)Object.entries(p.pCosts).forEach(([pid,cost])=>{if(pc[pid]){pc[pid].total+=cost;pc[pid].emps[emp.id]={name:emp.name,cost,days:p.pDays?.[pid]||0,hours:p.pHours?.[pid]||0,type:emp.type}}})});
+const gt=Object.values(pc).reduce((s,p)=>s+p.total,0);
+const[collapsed,setCollapsed]=useState({});const[pcQ,setPcQ]=useState("");const[sortBy,setSortBy]=useState("cost");
+const allCollapsed=Object.keys(pc).every(pid=>collapsed[pid]);
+const toggleAll=()=>{const v=!allCollapsed;const s={};Object.keys(pc).forEach(pid=>{s[pid]=v});setCollapsed(s)};
+const toggle=pid=>setCollapsed(c=>({...c,[pid]:!c[pid]}));
+const filtEntries=Object.entries(pc).filter(([_,p])=>!pcQ.trim()||p.name.includes(pcQ.trim())||p.name.split(" ").some(w=>w.startsWith(pcQ.trim())));
+const sorted=[...filtEntries].sort((a,b)=>sortBy==="cost"?b[1].total-a[1].total:sortBy==="name"?a[1].name.localeCompare(b[1].name,"ar"):Object.keys(b[1].emps).length-Object.keys(a[1].emps).length);
+return <div>
+<h1 style={{fontSize:26,fontWeight:800,marginBottom:6}}>📈 تكاليف المشاريع</h1><MF/>
+{/* Stats bar */}
+<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:18}}>
+<div style={ST(T.pr)}><div style={{fontSize:11,color:T.tm}}>إجمالي التكاليف</div><div style={{fontSize:22,fontWeight:800}}>{rn(gt,0).toLocaleString()}</div><div style={{fontSize:11,color:T.tm}}>{cfg.currency}</div></div>
+<div style={ST(T.bk)}><div style={{fontSize:11,color:T.tm}}>عدد المشاريع</div><div style={{fontSize:22,fontWeight:800}}>{Object.keys(pc).length}</div></div>
+<div style={ST(T.ac)}><div style={{fontSize:11,color:T.tm}}>أعلى مشروع</div><div style={{fontSize:14,fontWeight:700}}>{Object.values(pc).sort((a,b)=>b.total-a.total)[0]?.name||"—"}</div></div>
+</div>
+{/* Controls */}
+<div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+<div style={{flex:"1 1 240px",position:"relative"}}><input style={{...I,paddingRight:36}} value={pcQ} onChange={e=>setPcQ(e.target.value)} placeholder="🔍 بحث باسم المشروع..."/>{pcQ&&<span onClick={()=>setPcQ("")} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",cursor:"pointer",color:T.tm}}>✕</span>}</div>
+<div style={{display:"flex",gap:6,alignItems:"center"}}><span style={{fontSize:12,color:T.tm}}>ترتيب:</span>{[{k:"cost",l:"💰 التكلفة"},{k:"name",l:"🔤 الاسم"},{k:"emps",l:"👥 الموظفين"}].map(x=><button key={x.k} style={B(T.pr,sortBy!==x.k,"sm")} onClick={()=>setSortBy(x.k)}>{x.l}</button>)}</div>
+<button style={B(T.tm,true,"sm")} onClick={toggleAll}>{allCollapsed?"📖 فتح الكل":"📕 طي الكل"}</button>
+</div>
+{/* Project cards */}
+{sorted.map(([pid,p])=>{
+const isOpen=!collapsed[pid];const empList=Object.values(p.emps);const pct=gt>0?rn((p.total/gt)*100,1):0;
+return <div key={pid} style={{...C({marginBottom:12})}}>
+{/* Card header */}
+<div onClick={()=>toggle(pid)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none",marginBottom:isOpen?14:0}}>
+<div style={{display:"flex",alignItems:"center",gap:10}}>
+<span style={{fontSize:14,color:T.pr,transition:"transform 0.2s",display:"inline-block",transform:isOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
+<h3 style={{fontSize:16,fontWeight:700}}>🏗️ {p.name}</h3>
+<span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:T.bk+"18",color:T.bk,fontWeight:700}}>{empList.length} موظف</span>
+</div>
+<div style={{textAlign:"left",flexShrink:0}}>
+<div style={{fontSize:20,fontWeight:800,color:T.pr}}>{rn(p.total,0).toLocaleString()} {cfg.currency}</div>
+<div style={{fontSize:11,color:T.tm,textAlign:"center"}}>{pct}% من الإجمالي</div>
+</div>
+</div>
+{/* Progress bar */}
+{isOpen&&<div style={{height:6,background:T.sf,borderRadius:3,marginBottom:14,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${T.pr},${T.ac})`,borderRadius:3,transition:"width 0.5s"}}/></div>}
+{/* Employees table */}
+{isOpen&&(empList.length>0
+?<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:0}}>
+<thead><tr><th style={TH}>الموظف</th><th style={TH}>النوع</th><th style={TH}>أيام/ساعات</th><th style={TH}>التكلفة ({cfg.currency})</th><th style={TH}>النسبة</th></tr></thead>
+<tbody>{[...empList].sort((a,b)=>b.cost-a.cost).map((e,i)=><tr key={i}>
+<td style={{...TD,fontWeight:700}}>{e.name}</td>
+<td style={TD}>{e.type==="salary"?<span style={sB}>💼</span>:<span style={hB}>⏰</span>}</td>
+<td style={TD}>{e.days>0?e.days+" يوم":e.hours+" ساعة"}</td>
+<td style={{...TD,fontWeight:700,color:T.pr}}>{rn(e.cost,0).toLocaleString()}</td>
+<td style={TD}><div style={{display:"flex",alignItems:"center",gap:8}}>
+<div style={{flex:1,height:6,background:T.sf,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:(p.total>0?rn((e.cost/p.total)*100,0):0)+"%",background:T.og,borderRadius:3}}/></div>
+<span style={{fontSize:11,color:T.tm,minWidth:32}}>{p.total>0?rn((e.cost/p.total)*100,0):0}%</span>
+</div></td>
+</tr>)}
+<tr style={{background:T.pr+"08"}}><td colSpan={3} style={{...TD,fontWeight:800,color:T.tm}}>إجمالي المشروع</td><td style={{...TD,fontWeight:800,color:T.pr}}>{rn(p.total,0).toLocaleString()}</td><td style={{...TD,fontSize:11,color:T.tm}}>{pct}% من الكل</td></tr>
+</tbody></table></div>
+:<p style={{color:T.tm,textAlign:"center",padding:20}}>لا تكاليف</p>)}
+</div>})}
+{sorted.length===0&&<div style={{...C(),textAlign:"center",padding:40,color:T.tm}}>لا مشاريع{pcQ?" تطابق البحث":""}</div>}
+</div>};
+
+// ═══ REPORTS ═══
+const Rpt=()=>{const[lang,setLang]=useState("ar");const M=mL(fY,fM);const isEn=lang==="en";
+const lbl=(ar,en)=>isEn?en:ar;
+const ePDF=(eid,det)=>{const p=calc(eid);if(!p)return;const e=p.emp,iS=e.type==="salary";
+const dir=isEn?'ltr':'rtl';const align=isEn?'left':'right';
+const rows=det?p.recs.sort((a,b)=>a.date.localeCompare(b.date)).map(r=>{const proj=data.projects.find(x=>x.id===r.projectId);
+const isFri=r.status==="friday";const isFriAbs=r.status==="fri_absent";
+const stLbl=isFri?lbl("🕌 جمعة","🕌 Friday"):isFriAbs?lbl("🕌 غائب","🕌 Fri-Absent"):r.status==="present"?lbl("حاضر","Present"):lbl("غائب","Absent");
+const stClr=isFri?"#f59e0b":isFriAbs?"#ef4444":r.status==="present"?"#10b981":"#ef4444";
+const hrs=isFri?0:isFriAbs?0:r.status==="present"?(r.baseHours||e.hoursPerDay||8):0;
+const ot=isFri?r.friHours:isFriAbs?"—":r.status==="present"?(r.overtime||0):"—";
+return'<tr><td>'+fd(r.date)+'</td><td>'+(proj?.name||"—")+'</td>'+(iS?'<td style="color:'+stClr+';font-weight:600">'+stLbl+'</td><td>'+hrs+'</td><td>'+ot+'</td>':'<td>'+(r.hours||0)+'</td>')+'</tr>'}).join(""):"";
+
+const n2=v=>rn(v,2).toLocaleString();
+const n0=v=>rn(v,0).toLocaleString();
+const ic=(l,v,c)=>'<div class="ic"><div class="l">'+l+'</div><div class="v"'+(c?' style="color:'+c+'"':'')+'>'+v+'</div></div>';
+const grossBeforeDed=rn(p.basePay+(p.otPay||0)+p.bonus);
+
+// ── كارت الراتب — تنسيق بسيط وواضح ──
+const cards=
+// الصف الرئيسي: كل المعلومات في صف واحد
+'<div class="cds">'+
+ic(lbl('الاسم','Name'),'<b>'+e.name+'</b>')+
+ic(lbl('النوع','Type'),iS?lbl('💼 راتب','💼 Salary'):lbl('⏰ ساعة','⏰ Hourly'))+
+(p.deliveryLocation?ic(lbl('📍 التسليم','📍 Delivery'),p.deliveryLocation):'')+
+(iS?ic(lbl('حضور','Days'),p.present,'#10b981'):(ic(lbl('ساعات','Hours'),p.totalHours,'#10b981')))+
+(iS&&p.absent>0?ic(lbl('غياب','Absent'),p.absent,'#ef4444'):'')+
+(iS&&p.fridayDays>0?ic(lbl('🕌 جمعة','🕌 Fridays'),p.fridayDays+' ('+rn(p.fridayHours,1)+' '+lbl('س','hrs')+')','#f59e0b'):'')+
+(iS?ic(lbl('إضافي (س)','OT (hrs)'),rn(p.totalOT,1),'#0891b2'):'')+
+ic(lbl('الأساسي','Base'),n0(p.basePay))+
+(p.otPay>0?ic(lbl('🟦 أجر الإضافي','🟦 OT Pay'),'+ '+n0(p.otPay),'#0891b2'):'')+
+(p.bonus>0?ic(lbl('بونص','Bonus'),'+ '+n0(p.bonus),'#10b981'):'')+
+(p.deduction>0?ic(lbl('خصم','Deduction'),'− '+n0(p.deduction),'#ef4444'):'')+
+(p.advance>0?ic(lbl('سلفة','Advance'),'− '+n0(p.advance),'#d97706'):'')+
+'<div class="ic" style="background:#dcfce7"><div class="l">'+lbl('✅ الصافي','✅ Net')+'</div><div class="v" style="color:#166534;font-size:20px;font-weight:900">'+n0(p.net)+'</div></div>'+
+(p.cashPaid>0?ic(lbl('كاش','Cash'),n0(p.cashPaid),'#166534'):'')+
+(p.bankPaid>0?ic(lbl('🏦 بنك','🏦 Bank'),n0(p.bankPaid),'#1d4ed8'):'')+
+(p.totalPaid>0?ic(lbl('إجمالي المدفوع','Total Paid'),n0(p.totalPaid),'#555'):'')+
+(p.remaining>0
+  ?'<div class="ic" style="background:#fef9c3;border:1px solid #f59e0b"><div class="l">'+lbl('💵 للاستلام','💵 To Pay')+'</div><div class="v" style="color:#b45309;font-size:18px;font-weight:800">'+n0(p.remaining)+'</div></div>'
+  :p.remaining<0
+  ?'<div class="ic" style="background:#fef2f2;border:2px solid #ef4444"><div class="l" style="color:#991b1b;font-weight:700">⚠️ '+lbl('زيادة مدفوعة','Overpaid')+'</div><div class="v" style="color:#dc2626;font-size:18px;font-weight:900">'+n0(Math.abs(p.remaining))+'</div><div class="l" style="color:#7f1d1d;font-size:10px">'+lbl('مطلوب الاسترداد','Recovery Required')+'</div></div>'
+  :'<div class="ic" style="background:#dcfce7"><div class="l">'+lbl('مسدد بالكامل','Fully Paid')+'</div><div class="v" style="color:#166534">✅</div></div>')+
+'</div>';
+
+// متغيرات الاتجاه والأسلوب — مطلوبة داخل ePDF
+const pdfDir=isEn?'dir="ltr"':'dir="rtl"';
+const styleOverride=isEn?'<style>body{direction:ltr}th{text-align:left}td{text-align:left}</style>':'';
+
+mkPDF((det?lbl("تفصيلي","Detailed"):lbl("ملخص","Summary"))+" - "+e.name,'<div '+pdfDir+'>'+styleOverride+'<div class="hdr"><h1>'+lbl("كارت راتب","Salary Card")+'</h1><div class="sub">'+cfg.companyName+' — '+M+'</div></div>'+cards+(det?'<div class="sec"><div class="stit">'+lbl("سجل الدوام","Attendance Record")+'</div><table><thead><tr><th>'+lbl("التاريخ","Date")+'</th><th>'+lbl("المشروع","Project")+'</th>'+(iS?'<th>'+lbl("حالة","Status")+'</th><th>'+lbl("ساعات","Hours")+'</th><th>'+lbl("إضافي","OT")+'</th>':'<th>'+lbl("ساعات","Hours")+'</th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div><div class="sig"><div class="sb"><div class="sl">'+lbl("توقيع الموظف","Employee Signature")+'</div></div><div class="sb"><div class="sl">'+lbl("المسؤول","Manager")+'</div></div></div>':'')+'</div>')};
+
+// ═══ تقرير جماعي لكل الموظفين ═══
+const allPDF=(det)=>{
+const pd=isEn?'dir="ltr"':'dir="rtl"';
+const sOv=isEn?'<style>body{direction:ltr}th{text-align:left}td{text-align:left}</style>':'';
+const n0=v=>rn(v,0).toLocaleString();
+var sections='';var totalNetAll=0;
+data.employees.forEach(function(emp){
+  var p2=calc(emp.id);if(!p2)return;
+  var iS2=emp.type==="salary";
+  totalNetAll+=p2.net;
+  var grossBD=rn(p2.basePay+(p2.otPay||0)+p2.bonus);
+  var info=
+    '<div class="cds">'+
+    '<div class="ic"><div class="l">'+lbl('النوع','Type')+'</div><div class="v">'+(iS2?lbl('💼 راتب','💼 Salary'):lbl('⏰ ساعة','⏰ Hourly'))+'</div></div>'+
+    '<div class="ic"><div class="l">'+lbl('حضور','Days/Hrs')+'</div><div class="v" style="color:#10b981">'+(iS2?p2.present:p2.totalHours)+'</div></div>'+
+    (iS2&&p2.absent>0?'<div class="ic"><div class="l">'+lbl('غياب','Absent')+'</div><div class="v" style="color:#ef4444">'+p2.absent+'</div></div>':'')+
+    (iS2&&p2.fridayDays>0?'<div class="ic"><div class="l">🕌</div><div class="v" style="color:#f59e0b">'+p2.fridayDays+' ('+rn(p2.fridayHours,1)+' س)</div></div>':'')+
+    (iS2&&p2.totalOT>0?'<div class="ic"><div class="l">'+lbl('إضافي','OT')+'</div><div class="v" style="color:#0891b2">'+rn(p2.totalOT,1)+'</div></div>':'')+
+    '<div class="ic"><div class="l">'+lbl('أساسي','Base')+'</div><div class="v">'+n0(p2.basePay)+'</div></div>'+
+    (p2.otPay>0?'<div class="ic"><div class="l">'+lbl('أجر إضافي','OT Pay')+'</div><div class="v" style="color:#0891b2">+ '+n0(p2.otPay)+'</div></div>':'')+
+    (p2.bonus>0?'<div class="ic"><div class="l">'+lbl('بونص','Bonus')+'</div><div class="v" style="color:#10b981">+ '+n0(p2.bonus)+'</div></div>':'')+
+    (p2.deduction>0?'<div class="ic"><div class="l">'+lbl('خصم','Ded')+'</div><div class="v" style="color:#ef4444">− '+n0(p2.deduction)+'</div></div>':'')+
+    (p2.advance>0?'<div class="ic"><div class="l">'+lbl('سلفة','Adv')+'</div><div class="v" style="color:#d97706">− '+n0(p2.advance)+'</div></div>':'')+
+    '<div class="ic" style="background:#dcfce7"><div class="l">'+lbl('✅ الصافي','✅ Net')+'</div><div class="v" style="color:#166534;font-size:17px;font-weight:800">'+n0(p2.net)+'</div></div>'+
+    (p2.bankPaid>0?'<div class="ic"><div class="l">🏦 '+lbl('بنك','Bank')+'</div><div class="v" style="color:#1d4ed8">'+n0(p2.bankPaid)+'</div></div>':'')+
+    (p2.remaining>0?'<div class="ic" style="background:#fef9c3"><div class="l">💵 '+lbl('للاستلام','Remaining')+'</div><div class="v" style="color:#b45309;font-weight:700">'+n0(p2.remaining)+'</div></div>':
+     p2.remaining<0?'<div class="ic" style="background:#fef2f2;border:2px solid #ef4444"><div class="l" style="color:#dc2626">⚠️ '+lbl('زيادة','Overpaid')+'</div><div class="v" style="color:#dc2626;font-weight:700">'+n0(Math.abs(p2.remaining))+'</div></div>':
+    '<div class="ic" style="background:#dcfce7"><div class="l">✅ '+lbl('مسدد','Paid')+'</div><div class="v"></div></div>')+
+    '</div>';
+  if(det){
+    var rows2=p2.recs.sort(function(a,b){return a.date.localeCompare(b.date)}).map(function(r2){
+      var proj2=data.projects.find(function(p3){return p3.id===r2.projectId});
+      var isFri2=r2.status==="friday";var isFriAbs2=r2.status==="fri_absent";
+      var stLbl2=isFri2?lbl("🕌 جمعة","🕌 Fri"):isFriAbs2?lbl("🕌 غائب","Fri-Abs"):r2.status==="present"?lbl("حاضر","Present"):lbl("غائب","Absent");
+      var stC2=isFri2||isFriAbs2?"#f59e0b":r2.status==="present"?"#10b981":"#ef4444";
+      return '<tr><td>'+fd(r2.date)+'</td><td>'+(proj2?proj2.name:"—")+'</td>'+
+        (iS2?'<td style="color:'+stC2+'">'+stLbl2+'</td><td>'+(r2.baseHours||0)+'</td><td>'+(r2.overtime||0)+'</td>':'<td>'+(r2.hours||0)+'</td>')+'</tr>';
+    }).join("");
+    var tbl='<div class="sec"><table><thead><tr><th>'+lbl("التاريخ","Date")+'</th><th>'+lbl("المشروع","Proj")+'</th>'+
+      (iS2?'<th>'+lbl("حالة","Status")+'</th><th>'+lbl("ساعات","Hrs")+'</th><th>'+lbl("إضافي","OT")+'</th>':'<th>'+lbl("ساعات","Hrs")+'</th>')+
+      '</tr></thead><tbody>'+rows2+'</tbody></table></div>';
+    sections+='<div class="sec"><div class="stit">'+emp.name+'</div>'+info+tbl+'</div>';
+  } else {
+    sections+='<div class="sec"><div class="stit">'+emp.name+'</div>'+info+'</div>';
+  }
+});
+mkPDF(lbl(det?"تفصيلي":"ملخص",det?"Detailed":"Summary")+" — "+lbl("جميع الموظفين","All Employees"),
+'<div '+pd+'>'+sOv+'<div class="hdr"><h1>'+lbl(det?"كشف الرواتب التفصيلي":"ملخص الرواتب",det?"Detailed Payroll":"Payroll Summary")+'</h1>'+
+'<div class="sub">'+cfg.companyName+' — '+M+'</div></div>'+
+'<div class="cds"><div class="ic"><div class="l">'+lbl("الموظفون","Employees")+'</div><div class="v">'+data.employees.length+'</div></div>'+
+'<div class="ic" style="background:#dcfce7"><div class="l">'+lbl("إجمالي الرواتب","Total Net")+'</div><div class="v" style="color:#166534;font-size:18px;font-weight:800">'+n0(totalNetAll)+' '+cfg.currency+'</div></div></div>'+
+sections+'</div>',true);};
+
+return <div><h1 style={{fontSize:26,fontWeight:800,marginBottom:6}}>📄 التقارير</h1>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}><MF/><div style={{display:"flex",gap:8}}><button style={B(T.pr,lang!=="ar","sm")} onClick={()=>setLang("ar")}>🇸🇦 عربي</button><button style={B(T.bk,lang!=="en","sm")} onClick={()=>setLang("en")}>🇬🇧 English</button></div></div>
+{isEn&&<div style={{background:T.bk+"10",border:"1px solid "+T.bk+"30",borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:T.bk}}>📋 Reports will be generated in English (LTR)</div>}
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+<div style={C()}><h3 style={{fontSize:17,fontWeight:700,marginBottom:18}}>👤 {lbl("فردي","Individual")}</h3>
+{data.employees.filter(e=>e.type==="salary").length>0&&<><p style={{fontSize:13,fontWeight:700,color:T.pl,marginBottom:8}}>💼 {lbl("راتب","Salary")}</p>{data.employees.filter(e=>e.type==="salary").map(e=><div key={e.id} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+T.bd+"18"}}><span>{e.name}</span><div style={{display:"flex",gap:6}}><button style={B(T.pr,false,"sm")} onClick={()=>ePDF(e.id,true)}>📋</button><button style={B(T.ac,false,"sm")} onClick={()=>ePDF(e.id,false)}>📊</button></div></div>)}</>}
+{data.employees.filter(e=>e.type==="hourly").length>0&&<><p style={{fontSize:13,fontWeight:700,color:T.og,marginTop:14,marginBottom:8}}>⏰ {lbl("ساعة","Hourly")}</p>{data.employees.filter(e=>e.type==="hourly").map(e=><div key={e.id} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+T.bd+"18"}}><span>{e.name}</span><div style={{display:"flex",gap:6}}><button style={B(T.pr,false,"sm")} onClick={()=>ePDF(e.id,true)}>📋</button><button style={B(T.ac,false,"sm")} onClick={()=>ePDF(e.id,false)}>📊</button></div></div>)}</>}
+</div>
+<div><div style={C()}><h3 style={{fontSize:17,fontWeight:700,marginBottom:14}}>👥 {lbl("جماعي","All Employees")}</h3><div style={{display:"flex",flexDirection:"column",gap:10}}><button style={{...B(T.pr),width:"100%",justifyContent:"center"}} onClick={()=>allPDF(true)}>📋 {lbl("تفصيلي","Detailed")}</button><button style={{...B(T.ac),width:"100%",justifyContent:"center"}} onClick={()=>allPDF(false)}>📊 {lbl("ملخص","Summary")}</button></div></div></div></div>
+
+{/* ═══ PROJECT REPORTS ═══ */}
+<div style={{...C(),marginTop:20}}>
+<h3 style={{fontSize:17,fontWeight:700,marginBottom:18}}>🏗️ {lbl("تقارير المشاريع","Project Reports")}</h3>
+<p style={{fontSize:12,color:T.tm,marginBottom:16}}>{lbl("تقرير لكل مشروع يوضح تكاليف الرواتب وتفاصيل الموظفين","Report per project showing payroll costs and employee details")}</p>
+{data.projects.length===0?<p style={{color:T.tm,textAlign:"center",padding:20}}>{lbl("لا مشاريع","No projects")}</p>:
+data.projects.map(proj=>{
+const projEmps=[];let projTotal=0;
+data.employees.forEach(emp=>{const p=calc(emp.id);if(p&&p.pCosts[proj.id]){projEmps.push({emp,p,cost:p.pCosts[proj.id],days:p.pDays?.[proj.id]||0,hours:p.pHours?.[proj.id]||0});projTotal+=p.pCosts[proj.id]}});
+return <div key={proj.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid "+T.bd+"20"}}>
+<div><span style={{fontSize:14,fontWeight:700}}>{proj.name}</span><span style={{fontSize:12,color:T.tm,marginRight:10}}> — {projEmps.length} {lbl("موظف","emp")} — {rn(projTotal,0).toLocaleString()} {cfg.currency}</span></div>
+<div style={{display:"flex",gap:8}}>
+{/* Detailed project PDF */}
+<button style={B(T.pr,false,"sm")} onClick={()=>{
+const pdfDir=isEn?'dir="ltr"':'dir="rtl"';const styleOv=isEn?'<style>body{direction:ltr}th{text-align:left}td{text-align:left}</style>':'';
+let sections="";let total=0;
+data.employees.forEach(emp=>{const p=calc(emp.id);if(!p)return;const recs=p.recs.filter(r=>r.projectId===proj.id);if(!recs.length)return;
+const cost=p.pCosts[proj.id]||0;total+=cost;const iS=emp.type==="salary";
+const rows=recs.sort((a,b)=>a.date.localeCompare(b.date)).map(r=>{
+const isFri=r.status==="friday";const isFriAbs=r.status==="fri_absent";
+const stLbl=isFri?lbl("🕌 جمعة","🕌 Fri"):isFriAbs?lbl("🕌 غائب","🕌 Fri-Abs"):r.status==="present"?lbl("حاضر","P"):lbl("غائب","A");
+const stClr=isFri?"#f59e0b":isFriAbs?"#ef4444":r.status==="present"?"#10b981":"#ef4444";
+const hrs=isFri?0:isFriAbs?0:iS?r.status==="present"?(r.baseHours||emp.hoursPerDay||8):0:(r.hours||0);
+const ot=isFri?r.friHours:isFriAbs?"—":iS&&r.status==="present"?(r.overtime||0):"—";
+return'<tr><td>'+fd(r.date)+'</td><td style="color:'+stClr+';font-weight:600">'+stLbl+'</td><td>'+hrs+'</td><td>'+ot+'</td></tr>'}).join("");
+sections+='<div class="sec" style="page-break-inside:avoid"><div class="stit">'+emp.name+' ('+(iS?"💼":"⏰")+') — '+lbl("التكلفة","Cost")+': '+cost.toFixed(2)+' '+cfg.currency+'</div><table><thead><tr><th>'+lbl("التاريخ","Date")+'</th><th>'+lbl("الحالة","Status")+'</th><th>'+lbl("ساعات","Hours")+'</th><th>'+lbl("إضافي","OT")+'</th></tr></thead><tbody>'+rows+'</tbody></table></div>'});
+mkPDF(lbl("تفصيلي","Detailed")+" - "+proj.name,'<div '+pdfDir+'>'+styleOv+'<div class="hdr"><h1>'+lbl("تقرير تفصيلي للمشروع","Detailed Project Report")+'</h1><div class="sub">'+proj.name+' — '+cfg.companyName+' — '+M+'</div></div><div class="cds"><div class="ic"><div class="l">'+lbl("إجمالي التكلفة","Total Cost")+'</div><div class="v">'+total.toFixed(2)+' '+cfg.currency+'</div></div><div class="ic"><div class="l">'+lbl("عدد الموظفين","Employees")+'</div><div class="v">'+projEmps.length+'</div></div></div>'+sections+'</div>',true)
+}}>📋 {lbl("تفصيلي","Detail")}</button>
+{/* Summary project PDF */}
+<button style={B(T.ac,false,"sm")} onClick={()=>{
+const pdfDir=isEn?'dir="ltr"':'dir="rtl"';const styleOv=isEn?'<style>body{direction:ltr}th{text-align:left}td{text-align:left}</style>':'';
+let rows="";let total=0;
+data.employees.forEach(emp=>{const p=calc(emp.id);if(p&&p.pCosts[proj.id]){const d=p.pDays?.[proj.id]||0;const h=p.pHours?.[proj.id]||0;const cost=p.pCosts[proj.id];
+rows+='<tr><td>'+emp.name+'</td><td>'+(emp.type==="salary"?lbl("راتب","Salary"):lbl("ساعة","Hourly"))+'</td><td>'+(d>0?d+" "+lbl("يوم","days"):h+" "+lbl("ساعة","hrs"))+'</td><td>'+cost.toFixed(2)+'</td></tr>';total+=cost}});
+mkPDF(lbl("إجمالي","Summary")+" - "+proj.name,'<div '+pdfDir+'>'+styleOv+'<div class="hdr"><h1>'+lbl("تقرير إجمالي للمشروع","Project Summary Report")+'</h1><div class="sub">'+proj.name+' — '+cfg.companyName+' — '+M+'</div></div><div class="cds"><div class="ic"><div class="l">'+lbl("إجمالي التكلفة","Total Cost")+'</div><div class="v">'+total.toFixed(2)+' '+cfg.currency+'</div></div><div class="ic"><div class="l">'+lbl("عدد الموظفين","Employees")+'</div><div class="v">'+projEmps.length+'</div></div></div><table><thead><tr><th>'+lbl("الموظف","Employee")+'</th><th>'+lbl("النوع","Type")+'</th><th>'+lbl("أيام/ساعات","Days/Hours")+'</th><th>'+lbl("التكلفة","Cost")+' ('+cfg.currency+')</th></tr></thead><tbody>'+rows+'<tr class="tr"><td colspan="3">'+lbl("الإجمالي","Total")+'</td><td>'+total.toFixed(2)+'</td></tr></tbody></table></div>')
+}}>📊 {lbl("إجمالي","Summary")}</button>
+</div></div>})}
+</div>
+</div>
+{/* تقارير المشاريع */}
+<div style={{...C(),marginTop:20}}><h3 style={{fontSize:17,fontWeight:700,marginBottom:18}}>🏗️ تقارير المشاريع</h3>
+{data.projects.map(function(proj){var pt=0;data.employees.forEach(function(emp){var p2=calc(emp.id);if(p2&&p2.pCosts[proj.id])pt+=p2.pCosts[proj.id]});
+return <div key={proj.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid "+T.bd+"20"}}>
+<span style={{fontWeight:700}}>{proj.name} <span style={{fontSize:12,color:T.tm}}>({rn(pt,0).toLocaleString()} {cfg.currency})</span></span>
+<div style={{display:"flex",gap:6}}>
+<button style={B(T.pr,false,"sm")} onClick={function(){var sec="",total=0;data.employees.forEach(function(emp){var p2=calc(emp.id);if(!p2)return;var recs2=p2.recs.filter(function(r2){return r2.projectId===proj.id});if(!recs2.length)return;var cost=p2.pCosts[proj.id]||0;total+=cost;var iS2=emp.type==="salary";var rows2=recs2.sort(function(a,b){return a.date.localeCompare(b.date)}).map(function(r2){return "<tr><td>"+fd(r2.date)+"</td><td>"+(iS2?(r2.status==="present"?"حاضر":"غائب"):"—")+"</td><td>"+(iS2?(r2.baseHours||8):(r2.hours||0))+"</td><td>"+(iS2&&r2.status==="present"?(r2.overtime||0):"—")+"</td></tr>"}).join("");sec+='<div class="sec"><div class="stit">'+emp.name+" — "+cost.toFixed(2)+'</div><table><thead><tr><th>التاريخ</th><th>الحالة</th><th>ساعات</th><th>إضافي</th></tr></thead><tbody>'+rows2+"</tbody></table></div>"});mkPDF("تفصيلي - "+proj.name,'<div class="hdr"><h1>'+proj.name+'</h1><div class="sub">'+cfg.companyName+" — "+M+" — إجمالي: "+total.toFixed(2)+'</div></div>'+sec,true)}}>📋 تفصيلي</button>
+<button style={B(T.ac,false,"sm")} onClick={function(){var rows2="",total=0;data.employees.forEach(function(emp){var p2=calc(emp.id);if(p2&&p2.pCosts[proj.id]){var cost=p2.pCosts[proj.id];rows2+="<tr><td>"+emp.name+"</td><td>"+(emp.type==="salary"?"راتب":"ساعة")+"</td><td>"+cost.toFixed(2)+"</td></tr>";total+=cost}});mkPDF("إجمالي - "+proj.name,'<div class="hdr"><h1>'+proj.name+'</h1><div class="sub">'+cfg.companyName+" — "+M+'</div></div><table><thead><tr><th>الموظف</th><th>النوع</th><th>التكلفة</th></tr></thead><tbody>'+rows2+'<tr class="tr"><td colspan="2">الإجمالي</td><td>'+total.toFixed(2)+"</td></tr></tbody></table>")}}>📊 إجمالي</button>
+</div></div>})}
+</div>
+
+};
+
+// ═══ ARCHIVE ═══
+const Arch=()=>{
+const doA=()=>{if(isAr){nt("الشهر مؤرشف مسبقاً","err");return}if(!window.confirm("أرشفة "+mL(fY,fM)+"؟ لا يمكن التراجع"))return;
+const ps=data.employees.map(e=>calc(e.id)).filter(Boolean);
+const snapshot={employees:data.employees.map(e=>({...e})),projects:data.projects.map(p=>({...p})),attendance:[...mA],transactions:[...mT],payments:[...mP]};
+up(d=>{d.archives.push({id:gid(),year:fY,month:fM,date:new Date().toISOString(),totalNet:rn(ps.reduce((s,p)=>s+p.net,0)),totalPaid:rn(ps.reduce((s,p)=>s+p.totalPaid,0)),totalRem:rn(ps.reduce((s,p)=>s+p.remaining,0)),count:ps.length,snapshot})});
+addLog("أرشفة",mL(fY,fM));nt("تمت الأرشفة ✅")};
+const delArch=id=>{if(!window.confirm("حذف هذا الأرشيف نهائياً؟"))return;up(d=>{d.archives=d.archives.filter(a=>a.id!==id)});nt("تم الحذف")};
+const expArch=a=>{if(!a.snapshot){nt("لا يوجد snapshot لهذا الأرشيف","err");return}const wb=XLSX.utils.book_new();const emps=a.snapshot.employees||[];const atts=a.snapshot.attendance||[];const projs=a.snapshot.projects||[];const pays=a.snapshot.payments||[];const ws=XLSX.utils.aoa_to_sheet([["الموظف","النوع","أيام/ساعات","صافي الراتب","مدفوع","متبقي","موقع التسليم"]]); XLSX.utils.book_append_sheet(wb,ws,"الرواتب");XLSX.writeFile(wb,"أرشيف_"+mL(a.year,a.month)+".xlsx");nt("تم التصدير")};
+const sorted=[...(data.archives||[])].sort((a,b)=>b.date?.localeCompare(a.date||"")||0);
+const totalArch=sorted.reduce((s,a)=>s+a.totalNet,0);
+return <div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22,flexWrap:"wrap",gap:10}}>
+<div><h1 style={{fontSize:26,fontWeight:800,marginBottom:6}}>📦 الأرشيف</h1><p style={{fontSize:13,color:T.tm}}>سجل الشهور المغلقة — {sorted.length} شهر محفوظ</p></div>
+<div style={{display:"flex",gap:8}}><button style={B(isAr?T.tm:T.ac,false,"lg")} onClick={doA} disabled={isAr}>📦 {isAr?"مؤرشف ✓":"أرشفة الشهر الحالي"}</button></div>
+</div>
+<MF/><AW/>
+{/* Stats */}
+{sorted.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:20}}>
+<div style={ST(T.pr)}><div style={{fontSize:11,color:T.tm}}>شهور مؤرشفة</div><div style={{fontSize:24,fontWeight:800}}>{sorted.length}</div></div>
+<div style={ST(T.gn)}><div style={{fontSize:11,color:T.tm}}>إجمالي الرواتب</div><div style={{fontSize:20,fontWeight:800}}>{rn(totalArch,0).toLocaleString()}</div><div style={{fontSize:11,color:T.tm}}>{cfg.currency}</div></div>
+<div style={ST(T.ac)}><div style={{fontSize:11,color:T.tm}}>آخر أرشيف</div><div style={{fontSize:14,fontWeight:700}}>{sorted[0]?mL(sorted[0].year,sorted[0].month):"—"}</div></div>
+<div style={ST(T.og)}><div style={{fontSize:11,color:T.tm}}>متوسط الشهر</div><div style={{fontSize:18,fontWeight:800}}>{sorted.length>0?rn(totalArch/sorted.length,0).toLocaleString():"—"}</div><div style={{fontSize:11,color:T.tm}}>{cfg.currency}</div></div>
+</div>}
+{/* Archive list */}
+{sorted.length===0
+?<div style={{...C(),textAlign:"center",padding:60,color:T.tm}}><div style={{fontSize:48,marginBottom:12}}>📭</div><div style={{fontSize:16}}>لا أرشيفات بعد</div><div style={{fontSize:12,marginTop:8}}>اضغط "أرشفة الشهر الحالي" لبدء الحفظ</div></div>
+:<div style={C()}>
+<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,minWidth:700}}>
+<thead><tr>
+<th style={TH}>الشهر</th><th style={TH}>تاريخ الأرشفة</th><th style={TH}>موظفين</th>
+<th style={TH}>إجمالي الرواتب</th><th style={TH}>المدفوع</th><th style={TH}>المتبقي</th>
+<th style={TH}>Snapshot</th><th style={TH}>إجراءات</th>
+</tr></thead>
+<tbody>{sorted.map((a,i)=>{
+const hasSnap=!!a.snapshot;const pct=a.totalNet>0?rn((a.totalPaid/a.totalNet)*100,0):0;
+return <tr key={a.id}>
+<td style={{...TD,fontWeight:800,fontSize:15}}>{mL(a.year,a.month)}</td>
+<td style={{...TD,fontSize:12,color:T.tm}}>{fd(a.date?.slice(0,10))}</td>
+<td style={TD}><span style={{fontWeight:700,color:T.bk}}>{a.count}</span></td>
+<td style={{...TD,fontWeight:700}}>{rn(a.totalNet,0).toLocaleString()}</td>
+<td style={{...TD,color:T.gn,fontWeight:600}}>{rn(a.totalPaid||0,0).toLocaleString()}<br/><span style={{fontSize:10,color:T.tm}}>{pct}%</span></td>
+<td style={{...TD,color:a.totalRem>0?T.og:T.gn,fontWeight:600}}>{rn(a.totalRem||0,0).toLocaleString()}</td>
+<td style={TD}>{hasSnap?<span style={{fontSize:11,padding:"2px 8px",borderRadius:10,background:T.gn+"18",color:T.gn,fontWeight:700}}>✅ محفوظ</span>:<span style={{fontSize:11,color:T.tm}}>—</span>}</td>
+<td style={TD}><div style={{display:"flex",gap:6}}>
+{hasSnap&&<button style={B(T.ac,false,"sm")} onClick={()=>expArch(a)} title="تصدير Excel">📊</button>}
+<button style={B(T.rd,true,"sm")} onClick={()=>delArch(a.id)} title="حذف">🗑️</button>
+</div></td>
+</tr>})}
+<tr style={{background:T.pr+"08"}}><td colSpan={3} style={{...TD,fontWeight:800,color:T.tm}}>الإجمالي ({sorted.length} شهر)</td><td style={{...TD,fontWeight:800}}>{rn(totalArch,0).toLocaleString()}</td><td style={{...TD,fontWeight:700,color:T.gn}}>{rn(sorted.reduce((s,a)=>s+(a.totalPaid||0),0),0).toLocaleString()}</td><td style={{...TD,fontWeight:700,color:T.og}}>{rn(sorted.reduce((s,a)=>s+(a.totalRem||0),0),0).toLocaleString()}</td><td colSpan={2}/></tr>
+</tbody></table></div>
+</div>}
+</div>};
+
+// ═══ SETTINGS — Enhanced ═══
+const Set=()=>{const uCfg=(k,v)=>up(d=>{d.settings[k]=v});const[nl,setNl]=useState("");
+const dataSize=getDataSize(data);
+const maxStorage=50*1024*1024; // 50MB - IndexedDB/localStorage combined
+const usedBytes=new Blob([JSON.stringify(data)]).size;
+const usedPct=Math.min(100,rn((usedBytes/maxStorage)*100,1));
+
+return <div><h1 style={{fontSize:26,fontWeight:800,marginBottom:24}}>الإعدادات</h1>
+
+{/* Firebase Online Sync */}
+{(()=>{
+const[lFbCfg,setLFbCfg]=useState(()=>fbCfgLoad()||{apiKey:"",authDomain:"",databaseURL:"",projectId:"",storageBucket:"",messagingSenderId:"",appId:""});
+const saveFb=()=>{
+  if(!lFbCfg.databaseURL||!lFbCfg.apiKey){nt("أدخل apiKey و databaseURL على الأقل","err");return}
+  fbCfgSave(lFbCfg);
+  fbInit(lFbCfg,function(remoteData){
+    setData(function(prev){var rTs=remoteData._ts||0;var lTs=prev._ts||0;if(rTs>lTs||!prev._ts){dbS(remoteData);return remoteData}return prev});
+  },function(st){setFbStatus(st)});
+  nt("تم حفظ إعدادات Firebase — يجري الاتصال...");
+};
+const uploadBackupToFb=()=>{
+  var cfg=fbCfgLoad();
+  if(!cfg||!cfg.databaseURL){nt("فعّل Firebase أولاً","err");return}
+  const inp=document.createElement("input");inp.type="file";inp.accept=".json";
+  inp.onchange=function(e){
+    var f=e.target.files[0];if(!f)return;
+    var r=new FileReader();
+    r.onload=function(ev){
+      try{
+        var parsed=JSON.parse(ev.target.result);
+        parsed._ts=Date.now();
+        if(!_fbRef){nt("Firebase غير متصل","err");return}
+        _fbIgnoreNext=true;
+        _fbRef.set(parsed).then(function(){
+          dbS(parsed);
+          setData(parsed);
+          nt("✅ تم رفع الـ backup إلى Firebase — كلا المستخدمين سيحصلان على البيانات");
+        }).catch(function(er){nt("خطأ في الرفع: "+er.message,"err")});
+      }catch(err2){nt("ملف JSON غير صالح","err")}
+    };
+    r.readAsText(f);
+  };
+  inp.click();
+};
+const fbFields=[["apiKey","API Key"],["authDomain","Auth Domain"],["databaseURL","Database URL *"],["projectId","Project ID"],["storageBucket","Storage Bucket"],["messagingSenderId","Messaging Sender ID"],["appId","App ID"]];
+return <div style={{...C(),border:"2px solid "+(fbStatus==="connected"?T.gn:T.bd)}}>
+<h3 style={{fontSize:17,fontWeight:700,marginBottom:6}}>🔥 Firebase — المزامنة الأونلاين</h3>
+<p style={{fontSize:12,color:T.tm,marginBottom:16}}>يتيح لمستخدمين العمل معاً على نفس البيانات في الوقت الفعلي</p>
+<div style={{background:fbStatus==="connected"?T.gn+"15":T.sf,borderRadius:10,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+<div style={{width:12,height:12,borderRadius:"50%",background:fbStatus==="connected"?T.gn:fbStatus==="connecting"?T.og:T.tm,flexShrink:0}}/>
+<span style={{fontSize:13,fontWeight:700,color:fbStatus==="connected"?T.gn:fbStatus==="connecting"?T.og:T.tx}}>
+{fbStatus==="connected"?"✅ متصل بـ Firebase":fbStatus==="connecting"?"⏳ جاري الاتصال...":fbStatus.startsWith("error")?"❌ خطأ: "+fbStatus.slice(6):fbStatus==="offline"?"📴 غير متصل بالإنترنت":"⚙️ لم يُفعَّل بعد"}
+</span>
+</div>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+{fbFields.map(([k,lb])=><div key={k}><label style={L}>{lb}</label><input style={I} value={lFbCfg[k]||""} onChange={function(e){setLFbCfg(function(p){var n={...p};n[k]=e.target.value;return n})}} placeholder={k}/></div>)}
+</div>
+<div style={{display:"flex",flexDirection:"column",gap:8}}>
+<button style={{...B(T.pr),justifyContent:"center"}} onClick={saveFb}>💾 حفظ إعدادات Firebase والاتصال</button>
+<button style={{...B(T.ac),justifyContent:"center"}} onClick={uploadBackupToFb}>📤 رفع ملف Backup لـ Firebase (يحدّث كلا المستخدمين)</button>
+{fbStatus==="connected"&&<button style={{...B(T.og,true),justifyContent:"center"}} onClick={()=>{if(window.confirm("تزامن الآن من Firebase؟ سيتم استبدال البيانات المحلية بما في Firebase")){_fbIgnoreNext=false;_fbRef&&_fbRef.once("value").then(function(s){var v=s.val();if(v&&v.settings){dbS(v);setData(v);nt("تم التزامن")}else{nt("لا بيانات في Firebase","err")}})}}}> 🔄 تزامن يدوي من Firebase</button>}
+<p style={{fontSize:11,color:T.tm,marginTop:8}}>💡 خطوات الإعداد: افتح <b>console.firebase.google.com</b> ← أنشئ مشروع ← Realtime Database ← اضبط Rules على read/write: true ← انسخ بيانات المشروع هنا</p>
+</div>
+</div>;
+})()}
+
+{/* Data size monitor */}
+<div style={{...C(),marginBottom:20}}>
+<h3 style={{fontSize:17,fontWeight:700,marginBottom:16}}>💾 مراقبة حجم البيانات</h3>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginBottom:16}}>
+<div style={{background:T.sf,borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:11,color:T.tm}}>الحجم الحالي</div><div style={{fontSize:18,fontWeight:700}}>{dataSize}</div></div>
+<div style={{background:T.sf,borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:11,color:T.tm}}>الموظفين</div><div style={{fontSize:18,fontWeight:700}}>{data.employees.length}</div></div>
+<div style={{background:T.sf,borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:11,color:T.tm}}>سجلات الدوام</div><div style={{fontSize:18,fontWeight:700}}>{data.attendance.length}</div></div>
+<div style={{background:T.sf,borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:11,color:T.tm}}>الحركات</div><div style={{fontSize:18,fontWeight:700}}>{data.transactions.length}</div></div>
+</div>
+<div style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,color:T.tm}}>استخدام التخزين</span><span style={{fontSize:12,color:usedPct>80?T.rd:usedPct>50?T.og:T.gn,fontWeight:700}}>{usedPct}%</span></div>
+<div style={{height:10,background:T.sf,borderRadius:5,overflow:"hidden"}}><div style={{height:"100%",width:usedPct+"%",background:usedPct>80?T.rd:usedPct>50?T.og:T.gn,borderRadius:5,transition:"width 0.3s"}}/></div>
+</div>
+<p style={{fontSize:11,color:T.tm}}>الحد الأقصى: 50 MB — الدفعات: {data.payments.length} | الأرشيفات: {data.archives.length} | المشاريع: {data.projects.length}</p>
+</div>
+
+{/* Themes */}
+<div style={C()}><h3 style={{fontSize:17,fontWeight:700,marginBottom:18}}>🎨 الثيمات</h3><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:12}}>{Object.entries(THEMES).map(([k,th])=><div key={k} onClick={()=>uCfg("theme",k)} style={{cursor:"pointer",borderRadius:14,overflow:"hidden",border:cfg.theme===k?"3px solid "+th.pr:"2px solid "+th.bd}}><div style={{height:40,background:"linear-gradient(135deg,"+th.bg+","+th.cd+","+th.pr+")"}}/><div style={{padding:"8px",background:th.sf,textAlign:"center"}}><div style={{fontSize:13,fontWeight:700,color:th.tx}}>{th.name}</div><div style={{display:"flex",justifyContent:"center",gap:3,marginTop:4}}>{[th.pr,th.ac,th.rd,th.og].map((c,i)=><div key={i} style={{width:12,height:12,borderRadius:"50%",background:c}}/>)}</div>{cfg.theme===k&&<div style={{fontSize:10,color:th.pr}}>✅</div>}</div></div>)}</div></div>
+
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+{/* System config */}
+<div style={C()}>
+<h3 style={{fontSize:17,fontWeight:700,marginBottom:18}}>⚙️ إعدادات النظام</h3>
+<div style={{marginBottom:16}}><label style={L}>اسم الشركة</label><input style={I} value={cfg.companyName} onChange={e=>uCfg("companyName",e.target.value)}/></div>
+<div style={{marginBottom:16}}><label style={L}>العملة</label><input style={I} value={cfg.currency} onChange={e=>uCfg("currency",e.target.value)}/></div>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+<div style={{marginBottom:16}}><label style={L}>أيام الشهر الافتراضية (لحساب الراتب اليومي)</label><input type="number" style={I} value={cfg.daysPerMonth} onChange={e=>uCfg("daysPerMonth",Number(e.target.value)||30)}/><p style={{fontSize:11,color:T.tm,marginTop:6}}>💡 يمكنك تعديل أيام كل شهر بشكل مستقل من شريط الشهر/السنة في أعلى كل صفحة</p></div>
+{/* جدول الأيام المخصصة لكل شهر */}
+{Object.keys(cfg.monthlyDays||{}).length>0&&<div style={{marginBottom:16}}>
+<label style={L}>📆 أيام الشهور المعدّلة</label>
+<div style={{background:T.sf,borderRadius:10,padding:12,fontSize:12}}>
+{Object.entries(cfg.monthlyDays||{}).sort().map(([k,v])=>{
+const[y,m]=k.split("-");
+return <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"1px solid "+T.bd+"20"}}>
+<span style={{color:T.tx}}>{["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"][Number(m)-1]} {y}</span>
+<div style={{display:"flex",alignItems:"center",gap:10}}>
+<span style={{color:T.pr,fontWeight:700}}>{v} يوم</span>
+<button style={B(T.rd,true,"sm")} onClick={()=>up(d=>{delete d.settings.monthlyDays[k]})}>✕</button>
+</div>
+</div>})}
+</div>
+</div>}
+<div style={{marginBottom:16}}><label style={L}>مضاعف الإضافي (مثال: 1.5)</label><input type="number" step="0.1" style={I} value={cfg.overtimeMultiplier} onChange={e=>uCfg("overtimeMultiplier",Number(e.target.value)||1.5)}/></div>
+</div>
+<div style={{marginBottom:16}}><label style={L}>ساعات العمل الافتراضية / يوم</label><input type="number" style={I} value={cfg.defaultHoursPerDay||8} onChange={e=>uCfg("defaultHoursPerDay",Number(e.target.value)||8)}/></div>
+
+{/* Delivery locations */}
+<div style={{borderTop:"1px solid "+T.bd,paddingTop:16,marginTop:8}}>
+<h4 style={{fontSize:14,fontWeight:700,marginBottom:12}}>📍 مواقع التسليم</h4>
+<p style={{fontSize:12,color:T.tm,marginBottom:10}}>يتم اختيار موقع التسليم يدوياً في كشف الرواتب عند تسجيل الدفع</p>
+<div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>{dlocs.map((loc,i)=><div key={i} style={{...BG(T.bk),display:"flex",alignItems:"center",gap:6}}>{loc}<span onClick={()=>up(d=>{d.settings.deliveryLocations=d.settings.deliveryLocations.filter(l=>l!==loc)})} style={{cursor:"pointer",color:T.rd,fontSize:14}}>✕</span></div>)}</div>
+<div style={{display:"flex",gap:8}}><input style={{...I,flex:1}} value={nl} onChange={e=>setNl(e.target.value)} placeholder="موقع جديد"/><button style={B(T.ac,false,"sm")} onClick={()=>{if(nl.trim()){up(d=>{if(!d.settings.deliveryLocations.includes(nl.trim()))d.settings.deliveryLocations.push(nl.trim())});setNl("");nt("تم")}}}>➕</button></div>
+</div>
+</div>
+
+{/* Backup */}
+<div style={C()}>
+<h3 style={{fontSize:17,fontWeight:700,marginBottom:18}}>💾 النسخ الاحتياطي</h3>
+<div style={{display:"flex",flexDirection:"column",gap:10}}>
+<button style={{...B(T.pr),width:"100%",justifyContent:"center"}} onClick={()=>{const b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="backup_"+new Date().toISOString().slice(0,10)+".json";a.click();URL.revokeObjectURL(u);nt("تم")}}>📦 تصدير JSON</button>
+<button style={{...B(T.ac),width:"100%",justifyContent:"center"}} onClick={()=>{const wb=XLSX.utils.book_new();const ws1=XLSX.utils.aoa_to_sheet([["الاسم","النوع","الراتب","سعر الساعة","ساعات/يوم"],...data.employees.map(e=>[e.name,e.type,e.baseSalary||0,e.hourlyRate||0,e.hoursPerDay||0])]);ws1['!cols']=[{wch:20},{wch:10},{wch:10},{wch:12},{wch:10}];const ws2=XLSX.utils.aoa_to_sheet([["الموظف","التاريخ","المشروع","الحالة","إضافي","ساعات"],...data.attendance.map(a=>{const emp=data.employees.find(e=>e.id===a.employeeId);const proj=data.projects.find(p=>p.id===a.projectId);return[emp?.name||"",a.date,proj?.name||"",a.status,a.overtime||0,a.hours||0]})]);ws2['!cols']=[{wch:20},{wch:14},{wch:20},{wch:8},{wch:8},{wch:8}];XLSX.utils.book_append_sheet(wb,ws1,"الموظفون");XLSX.utils.book_append_sheet(wb,ws2,"الدوام");XLSX.writeFile(wb,"نسخة_"+new Date().toISOString().slice(0,10)+".xlsx");nt("تم")}}>📊 تصدير Excel</button>
+<button style={{...B(T.og),width:"100%",justifyContent:"center"}} onClick={()=>{const i=document.createElement("input");i.type="file";i.accept=".json";i.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{setData(JSON.parse(ev.target.result));nt("تم")}catch{nt("خطأ","err")}};r.readAsText(f)};i.click()}}>📥 استعادة JSON</button>
+<div style={{borderTop:"1px solid "+T.bd,paddingTop:16,marginTop:8}}><button style={{...B(T.rd),width:"100%",justifyContent:"center"}} onClick={()=>{if(window.confirm("حذف كل البيانات نهائياً؟")){setData(JSON.parse(JSON.stringify(defData)));nt("تم")}}}>🗑️ حذف الكل</button></div>
+</div></div>
+</div></div>};
+
+// ═══ LAYOUT ═══
+// All pages rendered always, shown/hidden via CSS to preserve state
+
+const Log=()=>{
+const logs=data.auditLog||[];
+const[lQ,setLQ]=useState("");const[lFrom,setLFrom]=useState("");const[lTo,setLTo]=useState("");const[lCat,setLCat]=useState("all");
+const catOf=act=>{const a=act||"";if(a.includes("موظف"))return"emp";if(a.includes("دوام")||a.includes("جماعي")||a.includes("نسخ"))return"att";if(a.includes("مشروع"))return"proj";if(a.includes("حركة")||a.includes("دفع"))return"fin";if(a.includes("أرشف"))return"arch";return"other"};
+const catMeta={all:{l:"الكل",i:"📋",c:T.pr},emp:{l:"موظفون",i:"👥",c:T.bk},att:{l:"دوام",i:"⏱️",c:T.ac},proj:{l:"مشاريع",i:"🏗️",c:T.og},fin:{l:"مالية",i:"💰",c:T.gn},arch:{l:"أرشيف",i:"📦",c:T.pl||T.pr},other:{l:"أخرى",i:"📝",c:T.tm}};
+const filt=logs.filter(l=>{if(lCat!=="all"&&catOf(l.action)!==lCat)return false;if(lQ.trim()){const q=lQ.trim();if(!((l.action||"").includes(q)||(l.details||"").includes(q)))return false}if(l.date){const d=l.date.slice(0,10);if(lFrom&&d<lFrom)return false;if(lTo&&d>lTo)return false}return true});
+const cats=Object.entries(catMeta).map(([k,v])=>({k,l:v.l,i:v.i,c:v.c,n:k==="all"?logs.length:logs.filter(l=>catOf(l.action)===k).length}));
+// Group by date
+const grouped=[];let lastDate="";filt.forEach(l=>{const d=l.date?l.date.slice(0,10):"";if(d!==lastDate){grouped.push({type:"sep",date:d});lastDate=d}grouped.push({type:"item",log:l})});
+const today=new Date().toISOString().slice(0,10);const todayCnt=logs.filter(l=>l.date?.slice(0,10)===today).length;
+return <div>
+<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18,flexWrap:"wrap",gap:10}}>
+<div><h1 style={{fontSize:26,fontWeight:800,marginBottom:4}}>📝 سجل التعديلات</h1><p style={{fontSize:13,color:T.tm}}>{logs.length} عملية مسجّلة — حفظ تلقائي لآخر 500</p></div>
+<div style={{display:"flex",gap:8}}>
+<button style={B(T.pr,true,"sm")} onClick={()=>{dlExcel(filt.map(l=>[catMeta[catOf(l.action)]?.l||"أخرى",l.action||"",l.details||"",l.date?new Date(l.date).toLocaleString("ar-EG"):""]),["التصنيف","العملية","التفاصيل","التاريخ والوقت"],"سجل_التعديلات_"+today);nt("تم التصدير")}}>📊 Excel</button>
+<button style={B(T.rd,true,"sm")} onClick={()=>{if(window.confirm("مسح كامل السجل؟")){up(d=>{d.auditLog=[]});nt("تم")}}}> 🗑️ مسح</button>
+</div></div>
+{/* Stats */}
+<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:18}}>
+<div style={ST(T.pr)}><div style={{fontSize:11,color:T.tm}}>إجمالي</div><div style={{fontSize:22,fontWeight:800}}>{logs.length}</div></div>
+<div style={ST(T.gn)}><div style={{fontSize:11,color:T.tm}}>اليوم</div><div style={{fontSize:22,fontWeight:800}}>{todayCnt}</div></div>
+<div style={ST(T.ac)}><div style={{fontSize:11,color:T.tm}}>النتائج</div><div style={{fontSize:22,fontWeight:800}}>{filt.length}</div></div>
+<div style={ST(T.og)}><div style={{fontSize:11,color:T.tm}}>دوام</div><div style={{fontSize:22,fontWeight:800}}>{logs.filter(l=>catOf(l.action)==="att").length}</div></div>
+</div>
+{/* Category chips */}
+<div style={{...C({padding:14}),marginBottom:14}}>
+<div style={{fontSize:12,color:T.tm,marginBottom:10,fontWeight:700}}>🏷️ تصنيف العمليات</div>
+<div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+{cats.filter(c=>c.n>0||c.k==="all").map(c=><button key={c.k} style={B(c.c,lCat!==c.k,"sm")} onClick={()=>setLCat(c.k)}>{c.i} {c.l} ({c.n})</button>)}
+</div></div>
+{/* Search + Date range */}
+<div style={{...C({padding:14}),marginBottom:16}}>
+<div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:12,alignItems:"flex-end"}}>
+<div><label style={L}>🔍 بحث في السجل</label><input style={I} value={lQ} onChange={e=>setLQ(e.target.value)} placeholder="ابحث بالعملية أو التفاصيل..."/></div>
+<div><label style={L}>📅 من تاريخ</label><input type="date" style={I} value={lFrom} onChange={e=>setLFrom(e.target.value)}/></div>
+<div><label style={L}>📅 إلى تاريخ</label><input type="date" style={I} value={lTo} onChange={e=>setLTo(e.target.value)}/></div>
+</div>
+{(lQ||lFrom||lTo||lCat!=="all")&&<button style={{...B(T.tm,true,"sm"),marginTop:10}} onClick={()=>{setLQ("");setLFrom("");setLTo("");setLCat("all")}}>🔄 مسح الفلاتر</button>}
+</div>
+{/* Log list */}
+<div style={C()}>
+{filt.length===0
+?<div style={{textAlign:"center",padding:50,color:T.tm}}>{logs.length===0?"لا سجلات بعد":"لا نتائج للبحث الحالي"}</div>
+:<div>
+{grouped.slice(0,200).map((g,idx)=>{
+if(g.type==="sep")return <div key={"s"+idx} style={{padding:"10px 6px 6px",fontSize:11,fontWeight:700,color:T.tm,borderBottom:"1px solid "+T.bd+"30",marginTop:idx===0?0:10,display:"flex",alignItems:"center",gap:8}}>
+<span style={{fontSize:14}}>📅</span><span>{g.date===today?"اليوم":g.date?fd(g.date):"بدون تاريخ"}</span><span style={{flex:1,height:1,background:T.bd+"30"}}/></div>;
+const l=g.log;const cat=catMeta[catOf(l.action)]||catMeta.other;
+const time=l.date?new Date(l.date).toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"}):"";
+return <div key={l.id||idx} style={{display:"flex",gap:10,padding:"10px 8px",borderBottom:"1px solid "+T.bd+"12",alignItems:"flex-start"}}>
+<div style={{width:36,height:36,borderRadius:10,background:cat.c+"15",color:cat.c,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{cat.i}</div>
+<div style={{flex:1,minWidth:0}}>
+<div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+<span style={{fontWeight:700,fontSize:13}}>{l.action||"—"}</span>
+<span style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:cat.c+"15",color:cat.c,fontWeight:700}}>{cat.l}</span>
+</div>
+{l.details&&<div style={{fontSize:12,color:T.tm,marginTop:3,wordBreak:"break-word"}}>{l.details}</div>}
+</div>
+<div style={{fontSize:11,color:T.tm,fontFamily:"monospace",flexShrink:0}}>{time}</div>
+</div>})}
+{filt.length>200&&<div style={{textAlign:"center",padding:16,fontSize:12,color:T.tm,borderTop:"1px solid "+T.bd}}>يعرض أول 200 نتيجة — ضيّق البحث لرؤية المزيد</div>}
+</div>}
+</div>
+</div>};
+
+const DashEl=Dash();const AttEl=Att();const EmpEl=Emp();const ProjEl=Proj();const TxEl=Tx();const PayEl=Pay();const PCostEl=PCost();const RptEl=Rpt();const ArchEl=Arch();const LogEl=Log();const SetEl=Set();
+return <div style={{minHeight:"100vh",background:isL?T.bg:"linear-gradient(160deg,"+T.bg+","+T.sf+")",color:T.tx,fontFamily:"'Tajawal',sans-serif",direction:"rtl"}}>
+<button onClick={()=>setSo(!so)} style={{position:"fixed",top:14,right:so?278:14,zIndex:200,background:T.pr,color:"#fff",border:"none",borderRadius:10,width:40,height:40,cursor:"pointer",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center",transition:"right 0.3s",boxShadow:"0 4px 15px "+T.pr+"40"}}>{so?"✕":"☰"}</button>
+<div style={{width:268,background:isL?T.sf:"linear-gradient(180deg,"+T.sf+","+T.cd+")",borderLeft:"1px solid "+T.bd,display:"flex",flexDirection:"column",position:"fixed",top:0,right:0,bottom:0,zIndex:100,transform:so?"translateX(0)":"translateX(100%)",transition:"transform 0.3s"}}>
+<div style={{padding:"28px 22px",borderBottom:"1px solid "+T.bd}}><h1 style={{fontSize:20,fontWeight:800,color:T.pr,margin:0}}>💰 {cfg.companyName}</h1><p style={{fontSize:11,color:T.tm,marginTop:6}}>نظام الرواتب v5</p><div style={{marginTop:8,padding:"4px 10px",borderRadius:8,background:fbStatus==="connected"?T.gn+"22":fbStatus==="connecting"?T.og+"22":T.rd+"22",display:"flex",alignItems:"center",gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:fbStatus==="connected"?T.gn:fbStatus==="connecting"?T.og:T.tm}}/><span style={{fontSize:10,color:fbStatus==="connected"?T.gn:fbStatus==="connecting"?T.og:T.tm}}>{fbStatus==="connected"?"أونلاين ✓":fbStatus==="connecting"?"جاري الاتصال...":fbStatus.startsWith("error")?"خطأ":fbStatus==="offline"?"غير متصل":"غير مفعّل"}</span></div></div>
+<nav style={{padding:"14px 0",flex:1,overflowY:"auto"}}>{NAV.map(item=>{const ac=pg===item.id;return <div key={item.id} onClick={()=>setPg(item.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 22px",cursor:"pointer",fontSize:14,fontWeight:ac?700:500,color:ac?T.pr:T.tm,background:ac?T.pr+"12":"transparent",borderRight:ac?"3px solid "+T.pr:"3px solid transparent"}}><span style={{fontSize:18}}>{item.ic}</span><span>{item.lb}</span></div>})}</nav>
+<div style={{padding:"16px 22px",borderTop:"1px solid "+T.bd,fontSize:11,color:T.tm}}><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:T.gn}}/>يعمل بدون إنترنت</div><div style={{marginTop:4}}>💾 {getDataSize(data)}</div></div>
+</div>
+<div style={{marginRight:so?268:0,padding:"28px 32px",minHeight:"100vh",transition:"margin-right 0.3s"}}>
+<div style={{display:pg==="dash"?"block":"none"}}>{DashEl}</div>
+<div style={{display:pg==="att"?"block":"none"}}>{AttEl}</div>
+<div style={{display:pg==="emp"?"block":"none"}}>{EmpEl}</div>
+<div style={{display:pg==="proj"?"block":"none"}}>{ProjEl}</div>
+<div style={{display:pg==="tx"?"block":"none"}}>{TxEl}</div>
+<div style={{display:pg==="pay"?"block":"none"}}>{PayEl}</div>
+<div style={{display:pg==="pcost"?"block":"none"}}>{PCostEl}</div>
+<div style={{display:pg==="rpt"?"block":"none"}}>{RptEl}</div>
+<div style={{display:pg==="arch"?"block":"none"}}>{ArchEl}</div>
+<div style={{display:pg==="log"?"block":"none"}}>{LogEl}</div>
+<div style={{display:pg==="set"?"block":"none"}}>{SetEl}</div>
+</div>
+{toast&&<div style={{position:"fixed",bottom:28,left:"50%",transform:"translateX(-50%)",zIndex:2000,padding:"14px 28px",borderRadius:14,background:toast.tp==="err"?T.rd:T.gn,color:"#fff",fontSize:14,fontWeight:700,fontFamily:"inherit",boxShadow:"0 10px 40px rgba(0,0,0,0.4)",animation:"ti 0.35s cubic-bezier(0.175,0.885,0.32,1.275)"}}>{toast.tp==="err"?"❌":"✅"} {toast.m}</div>}
+<style>{`@keyframes ti{from{opacity:0;transform:translateX(-50%) translateY(20px) scale(0.9)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}*{scrollbar-width:thin;scrollbar-color:${T.bd} transparent}input:focus,select:focus{border-color:${T.pr}!important;box-shadow:0 0 0 3px ${T.pr}20}button:hover{opacity:0.92}tr:hover td{background:${T.pr}06!important}select option{background:${T.sf};color:${T.tx}}`}</style>
+</div>}
+
+const root=ReactDOM.createRoot(document.getElementById('root'));root.render(React.createElement(App));
+</script></body></html>
