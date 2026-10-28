@@ -171,7 +171,7 @@ function analyzeRow(row,employees,projects,existingAtt,cfg){
   if(!projMatch)return{ok:false,skip:false,nameRaw:nameRaw,dateRaw:dateRaw,projRaw:projRaw,emp:empMatch.emp,issues:["مشروع غير موجود: "+projRaw],warns:warns,cost:0,statusCode:"error"};
   if(projMatch.type!=="exact")warns.push("مشروع تقريبي ("+projMatch.score+"%) ← "+projMatch.emp.name);
   var isDup=existingAtt.some(function(a){return a.employeeId===empMatch.emp.id&&a.date===dateRaw});
-  if(isDup)return{ok:false,skip:false,dup:true,nameRaw:nameRaw,dateRaw:dateRaw,projRaw:projRaw,emp:empMatch.emp,proj:projMatch.emp,issues:[],warns:["مكرر — موجود مسبقاً"],cost:0,statusCode:"dup"};
+  if(isDup)return{ok:false,skip:false,dup:true,nameRaw:nameRaw,dateRaw:dateRaw,projRaw:projRaw,statusRaw:statusRaw,otRaw:otRaw,hrsRaw:hrsRaw,emp:empMatch.emp,proj:projMatch.emp,issues:[],warns:["مكرر — موجود مسبقاً"],cost:0,statusCode:"dup"};
   var emp=empMatch.emp;
   // مطابقة مرنة للحالة — تتعامل مع اختلافات الهمزة والتشكيل
   function isAbsent(s){var n=normName(s||"");return s==="غائب"||s==="غايب"||s==="absent"||n==="غائب"||n==="غايب"||n.startsWith("غائ")||n.startsWith("غاي")||s==="0"||s==="false";}
