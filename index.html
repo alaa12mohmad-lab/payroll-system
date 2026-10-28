@@ -157,7 +157,7 @@ function analyzeRow(row,employees,projects,existingAtt,cfg){
   var nameRaw=String(row[0]||"").trim();
   var dateRaw=String(row[1]||"").trim();
   var projRaw=String(row[2]||"").trim();
-  var statusRaw=String(row[3]||"حاضر").trim();
+  var statusRaw=String(row[3]||"").trim();
   var otRaw=Number(row[4])||0;
   var hrsRaw=Number(row[5])||0;
   var issues=[],warns=[];
@@ -173,7 +173,10 @@ function analyzeRow(row,employees,projects,existingAtt,cfg){
   var isDup=existingAtt.some(function(a){return a.employeeId===empMatch.emp.id&&a.date===dateRaw});
   if(isDup)return{ok:false,skip:false,dup:true,nameRaw:nameRaw,dateRaw:dateRaw,projRaw:projRaw,emp:empMatch.emp,proj:projMatch.emp,issues:[],warns:["مكرر — موجود مسبقاً"],cost:0,statusCode:"dup"};
   var emp=empMatch.emp;
-  var isAbs=statusRaw==="غائب"||statusRaw==="absent";
+  // مطابقة مرنة للحالة — تتعامل مع اختلافات الهمزة والتشكيل
+  function isAbsent(s){var n=normName(s||"");return s==="غائب"||s==="غايب"||s==="absent"||n==="غائب"||n==="غايب"||n.startsWith("غائ")||n.startsWith("غاي")||s==="0"||s==="false";}
+  var isAbs=isAbsent(statusRaw);
+  if(!statusRaw)statusRaw="حاضر";
   var isFri=isFriday(dateRaw); // هل التاريخ يوم جمعة؟
   var cost=0;
   if(emp.type==="salary"){
@@ -614,10 +617,11 @@ up(d=>{
 toImport.forEach(r=>{
 if(!r.emp||!r.proj||!r.dateRaw)return;
 if(d.attendance.find(a=>a.employeeId===r.emp.id&&a.date===r.dateRaw))return;
-const isAbs=r.statusRaw==="غائب"||r.statusRaw==="absent";
+function isAbsentRaw(s){var n=normName(s||"");return s==="غائب"||s==="غايب"||s==="absent"||n==="غائب"||n==="غايب"||n.startsWith("غائ")||n.startsWith("غاي")||s==="0"||s==="false";}
+const isAbs=isAbsentRaw(r.statusRaw);
 d.attendance.push((function(){
   var recId=gid();
-  var isAbs2=r.statusRaw==="غائب"||r.statusRaw==="absent";
+  var isAbs2=isAbsentRaw(r.statusRaw);
   var isFri2=isFriday(r.dateRaw);
   if(r.emp.type==="salary"){
     if(isFri2){
