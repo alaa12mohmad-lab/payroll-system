@@ -529,7 +529,7 @@ const[shBulk,setShBulk]=useState(false);const[bulkDate,setBulkDate]=useState("")
 const[shCopy,setShCopy]=useState(false);const[copyFrom,setCopyFrom]=useState("");const[copyTo,setCopyTo]=useState("");const[sel,setSel]=useState([]);
 const[confData,setConfData]=useState(null);const[confChecked,setConfChecked]=useState(false);
 const[scanOpen,setScanOpen]=useState(false);const[bulkPreview,setBulkPreview]=useState(false);
-const[impPrev,setImpPrev]=useState(null);const[impMode,setImpMode]=useState("ok");const[bkOpen,setBkOpen]=useState(false);
+const[impPrev,setImpPrev]=useState(null);const[impMode,setImpMode]=useState("ok");const[impOverwrite,setImpOverwrite]=useState(false);const[bkOpen,setBkOpen]=useState(false);
 const attErrCount=useMemo(()=>mA.filter(r=>{const e2=data.employees.find(e=>e.id===r.employeeId);if(!e2)return false;return attValidate(e2,r.date,r.status,r.overtime,r.hours,r.friHours,fM,fY,cfg).errs.length>0}),[mA,data.employees,fM,fY,cfg]).length;
 const selE=data.employees.find(e=>e.id===fm.employeeId);
 const cls=()=>{setFm({employeeId:"",date:"",projectId:"",status:"present",overtime:"0",hours:"0",friHours:""});setEi(null);setSh(false)};
@@ -612,36 +612,34 @@ const doCommitImport=()=>{
 if(!impPrev)return;
 const bkKey=autoBackup(data,"import_"+impPrev.filename.replace(/[^a-z0-9]/gi,"_").slice(0,30));
 const toImport=impPrev.rows.filter(r=>impMode==="ok"?r.statusCode==="ok":r.statusCode==="ok"||r.statusCode==="warn");
-let cnt=0;
-up(d=>{
-toImport.forEach(r=>{
-if(!r.emp||!r.proj||!r.dateRaw)return;
-if(d.attendance.find(a=>a.employeeId===r.emp.id&&a.date===r.dateRaw))return;
+// include dup rows too when overwrite mode is on
+const toImportFull=impOverwrite?impPrev.rows.filter(r=>r.statusCode==="ok"||r.statusCode==="warn"||r.statusCode==="dup"):toImport;
 function isAbsentRaw(s){var n=normName(s||"");return s==="غائب"||s==="غايب"||s==="absent"||n==="غائب"||n==="غايب"||n.startsWith("غائ")||n.startsWith("غاي")||s==="0"||s==="false";}
-const isAbs=isAbsentRaw(r.statusRaw);
-d.attendance.push((function(){
-  var recId=gid();
+function buildRec(r,recId){
   var isAbs2=isAbsentRaw(r.statusRaw);
   var isFri2=isFriday(r.dateRaw);
   if(r.emp.type==="salary"){
-    if(isFri2){
-      // يوم الجمعة: نحفظ الساعات في friHours بحالة "friday"
-      var fh=isAbs2?0:(Number(r.otRaw)||Number(r.hrsRaw)||r.emp.hoursPerDay||8);
-      return{id:recId,employeeId:r.emp.id,date:r.dateRaw,projectId:r.proj.id,status:isAbs2?"fri_absent":"friday",overtime:0,hours:0,baseHours:0,friHours:fh};
-    }else{
-      return{id:recId,employeeId:r.emp.id,date:r.dateRaw,projectId:r.proj.id,status:isAbs2?"absent":"present",overtime:isAbs2?0:Number(r.otRaw)||0,hours:r.emp.hoursPerDay||8,baseHours:r.emp.hoursPerDay||8,friHours:0};
-    }
-  }else{
-    return{id:recId,employeeId:r.emp.id,date:r.dateRaw,projectId:r.proj.id,status:"present",overtime:0,hours:Number(r.hrsRaw)||0,baseHours:0,friHours:0};
+    if(isFri2){var fh=isAbs2?0:(Number(r.otRaw)||Number(r.hrsRaw)||r.emp.hoursPerDay||8);return{id:recId,employeeId:r.emp.id,date:r.dateRaw,projectId:r.proj.id,status:isAbs2?"fri_absent":"friday",overtime:0,hours:0,baseHours:0,friHours:fh};}
+    else{return{id:recId,employeeId:r.emp.id,date:r.dateRaw,projectId:r.proj.id,status:isAbs2?"absent":"present",overtime:isAbs2?0:Number(r.otRaw)||0,hours:r.emp.hoursPerDay||8,baseHours:r.emp.hoursPerDay||8,friHours:0};}
+  }else{return{id:recId,employeeId:r.emp.id,date:r.dateRaw,projectId:r.proj.id,status:"present",overtime:0,hours:Number(r.hrsRaw)||0,baseHours:0,friHours:0};}
+}
+let cnt=0,upd=0;
+up(d=>{
+toImportFull.forEach(r=>{
+  if(!r.emp||!r.proj||!r.dateRaw)return;
+  var existIdx=d.attendance.findIndex(a=>a.employeeId===r.emp.id&&a.date===r.dateRaw);
+  if(existIdx>=0){
+    if(impOverwrite){d.attendance[existIdx]=buildRec(r,d.attendance[existIdx].id);upd++;}
+    return;
   }
-})());
-cnt++;
+  d.attendance.push(buildRec(r,gid()));
+  cnt++;
 });
 if(!d.auditLog)d.auditLog=[];
-d.auditLog.unshift({id:gid(),action:"استيراد Excel",details:"ملف: "+impPrev.filename+" | تم: "+cnt+" | أخطاء: "+impPrev.errs.length+" | مكرر: "+impPrev.dups.length+" | نسخة: "+(bkKey?"✅":"لا"),date:new Date().toISOString()});
+d.auditLog.unshift({id:gid(),action:"استيراد Excel",details:"ملف: "+impPrev.filename+" | جديد: "+cnt+" | تحديث: "+upd+" | أخطاء: "+impPrev.errs.length+" | نسخة: "+(bkKey?"✅":"لا"),date:new Date().toISOString()});
 if(d.auditLog.length>500)d.auditLog=d.auditLog.slice(0,500);
 });
-nt("✅ تم استيراد "+cnt+" سجل"+(impPrev.dups.length?" (تخطي "+impPrev.dups.length+" مكرر)":""));
+nt("✅ جديد: "+cnt+", تحديث: "+upd+(impPrev.dups.length&&!impOverwrite?" (تخطي "+impPrev.dups.length+" مكرر)":""));
 setImpPrev(null);
 };
 
@@ -904,17 +902,21 @@ return <>
 <div style={{maxHeight:240,overflowY:"auto",marginBottom:14,border:"1px solid "+T.bd,borderRadius:10}}>
 <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,fontSize:11}}>
 <thead style={{position:"sticky",top:0}}><tr style={{background:T.cd}}>
-{["#","الاسم","مطابق","التاريخ","المشروع","حالة","التكلفة","ملاحظة"].map(h=><th key={h} style={{...TH,fontSize:10,padding:"8px 6px"}}>{h}</th>)}
+{["#","الاسم","مطابق","التاريخ","المشروع","الحضور","حالة","التكلفة","ملاحظة"].map(h=><th key={h} style={{...TH,fontSize:10,padding:"8px 6px"}}>{h}</th>)}
 </tr></thead>
 <tbody>{impPrev.rows.map((r,ix)=>{
 var rowBg=r.statusCode==="ok"?T.gn+"06":r.statusCode==="warn"?T.og+"08":r.statusCode==="dup"?T.tm+"06":T.rd+"08";
 var icon=r.statusCode==="ok"?"✅":r.statusCode==="warn"?"⚠️":r.statusCode==="dup"?"🔁":r.statusCode==="skip"?"⏭️":"🚫";
+function chkAbs(s){var n=normName(s||"");return s==="غائب"||s==="غايب"||s==="absent"||n==="غائب"||n==="غايب"||n.startsWith("غائ")||n.startsWith("غاي")||s==="0"||s==="false";}
+var isAbRow=chkAbs(r.statusRaw||"");
+var attLbl=r.statusRaw?isAbRow?<span style={{color:T.rd,fontWeight:700}}>❌ غائب</span>:<span style={{color:T.gn,fontWeight:700}}>✅ حاضر</span>:"—";
 return <tr key={ix} style={{background:rowBg}}>
 <td style={{...TD,fontSize:10,color:T.tm,padding:"6px"}}>{ix+1}</td>
 <td style={{...TD,fontSize:10,fontWeight:600,padding:"6px"}}>{r.nameRaw||"—"}</td>
 <td style={{...TD,fontSize:10,color:r.emp&&normName(r.nameRaw)!==normName(r.emp.name)?T.og:T.tx,padding:"6px"}}>{r.emp?r.emp.name:"—"}</td>
 <td style={{...TD,fontSize:10,padding:"6px"}}>{r.dateRaw||"—"}</td>
 <td style={{...TD,fontSize:10,padding:"6px"}}>{r.proj?r.proj.name:r.projRaw||"—"}</td>
+<td style={{...TD,fontSize:10,textAlign:"center",padding:"6px"}}>{attLbl}</td>
 <td style={{...TD,textAlign:"center",padding:"6px"}}>{icon}</td>
 <td style={{...TD,fontSize:10,fontWeight:700,color:T.pr,padding:"6px"}}>{r.cost>0?rn(r.cost,0).toLocaleString():"—"}</td>
 <td style={{...TD,fontSize:10,color:T.tm,padding:"6px",maxWidth:160}}>{[...(r.issues||[]),...(r.warns||[])].join(" | ")||"—"}</td>
@@ -937,9 +939,14 @@ return <tr key={ix} style={{background:rowBg}}>
 </div>
 </div>
 </div>
+{impPrev.dups.length>0&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:impOverwrite?T.og+"12":T.sf,border:"1.5px solid "+(impOverwrite?T.og:T.bd),borderRadius:10,marginBottom:10,cursor:"pointer"}} onClick={()=>setImpOverwrite(v=>!v)}>
+<input type="checkbox" checked={impOverwrite} onChange={e=>setImpOverwrite(e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
+<div><div style={{fontSize:13,fontWeight:700,color:impOverwrite?T.og:T.tx}}>🔄 تحديث السجلات المكررة ({impPrev.dups.length} سجل)</div>
+<div style={{fontSize:11,color:T.tm}}>عند التفعيل يتم تحديث الحالة (حاضر/غائب) للسجلات الموجودة بدلاً من تخطيها — مفيد لتصحيح حالة سبق استيرادها بشكل خاطئ</div>
+</div></div>}
 <div style={{display:"flex",gap:10}}>
 <button style={{...B(impMode==="ok"?T.gn:T.og,false,"lg"),flex:1,justifyContent:"center"}} onClick={doCommitImport}>
-{"💾 استيراد "+(impMode==="ok"?impPrev.ok.length:impPrev.ok.length+impPrev.warn.length)+" سجل"}
+{"💾 استيراد "+(impOverwrite?impPrev.ok.length+impPrev.warn.length+impPrev.dups.length:impMode==="ok"?impPrev.ok.length:impPrev.ok.length+impPrev.warn.length)+" سجل"+(impOverwrite?" (مع تحديث المكرر)":"")}
 </button>
 <button style={B(T.tm,true)} onClick={()=>setImpPrev(null)}>إلغاء</button>
 </div>
