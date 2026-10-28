@@ -621,7 +621,7 @@ function buildRec(r,recId){
   if(r.emp.type==="salary"){
     if(isFri2){var fh=isAbs2?0:(Number(r.otRaw)||Number(r.hrsRaw)||r.emp.hoursPerDay||8);return{id:recId,employeeId:r.emp.id,date:r.dateRaw,projectId:r.proj.id,status:isAbs2?"fri_absent":"friday",overtime:0,hours:0,baseHours:0,friHours:fh};}
     else{return{id:recId,employeeId:r.emp.id,date:r.dateRaw,projectId:r.proj.id,status:isAbs2?"absent":"present",overtime:isAbs2?0:Number(r.otRaw)||0,hours:r.emp.hoursPerDay||8,baseHours:r.emp.hoursPerDay||8,friHours:0};}
-  }else{return{id:recId,employeeId:r.emp.id,date:r.dateRaw,projectId:r.proj.id,status:"present",overtime:0,hours:Number(r.hrsRaw)||0,baseHours:0,friHours:0};}
+  }else{return{id:recId,employeeId:r.emp.id,date:r.dateRaw,projectId:r.proj.id,status:isAbs2?"absent":"present",overtime:0,hours:isAbs2?0:Number(r.hrsRaw)||0,baseHours:0,friHours:0};}
 }
 let cnt=0,upd=0;
 up(d=>{
