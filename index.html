@@ -1824,7 +1824,7 @@ return <tr key={p.emp.id}>
 </tr>})}
 {/* صف الإجماليات */}
 {psF.length>0&&<tr style={{background:T.pr+"0a"}}>
-<td style={{...TD,fontWeight:800,color:T.tm}} colSpan={6}>الإجمالي ({psF.length} موظف)</td>
+<td style={{...TD,fontWeight:800,color:T.tm}} colSpan={7}>الإجمالي ({psF.length} موظف)</td>
 <td style={{...TD,fontWeight:700}}>{rn(psF.reduce((s,p)=>s+p.basePay,0),0).toLocaleString()}</td><td style={{...TD,fontWeight:700,color:T.ac}}>{rn(psF.reduce((s,p)=>s+(p.allowancesTotal||0),0),0).toLocaleString()}</td>
 <td style={{...TD,fontWeight:700,color:T.ac}}>{rn(psF.reduce((s,p)=>s+p.otPay,0),0).toLocaleString()}</td>
 <td style={{...TD,fontWeight:700,color:T.gn}}>{rn(psF.reduce((s,p)=>s+p.bonus,0),0).toLocaleString()}</td>
